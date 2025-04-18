@@ -1,0 +1,53 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "▶️ Starte Eingabemaske",
+            "type": "python",
+            "request": "launch",
+            "program": "${workspaceFolder}/gui/eingabemaske.py",
+            "cwd": "${workspaceFolder}",
+            "env": {
+                "PYTHONPATH": "${workspaceFolder}"
+            },
+            "console": "integratedTerminal",
+            "justMyCode": true
+        },
+        {
+            "name": "▶️ Starte Lastenkombination",
+            "type": "python",
+            "request": "launch",
+            "program": "${workspaceFolder}/berechnungen/lastenkombination.py",
+            "cwd": "${workspaceFolder}",
+            "env": {
+                "PYTHONPATH": "${workspaceFolder}"
+            },
+            "console": "integratedTerminal",
+            "justMyCode": true
+        },
+        {
+            "name": "▶️ Starte Datenbank",
+            "type": "python",
+            "request": "launch",
+            "program": "${workspaceFolder}/datenbank/datenbank_holz.py",
+            "cwd": "${workspaceFolder}",
+            "env": {
+                "PYTHONPATH": "${workspaceFolder}"
+            },
+            "console": "integratedTerminal",
+            "justMyCode": true
+        },
+        {
+            "name": "▶️ Starte Anzeige",
+            "type": "python",
+            "request": "launch",
+            "program": "${workspaceFolder}/anzeige/anzeige_lastenkombination.py",
+            "cwd": "${workspaceFolder}",
+            "env": {
+                "PYTHONPATH": "${workspaceFolder}"
+            },
+            "console": "integratedTerminal",
+            "justMyCode": true
+        }
+    ]
+}
