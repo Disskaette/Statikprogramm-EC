@@ -96,7 +96,7 @@ class FeebbBerechnung:
         ]
 
         for idx, feld in enumerate(normale_felder):
-            n = int(round(feld * 20))
+            n = int(round(feld * 5))
             l_mm = feld * 1000 / n
             for _ in range(n):
                 all_elements.append({
