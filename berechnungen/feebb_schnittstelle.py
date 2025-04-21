@@ -1,9 +1,8 @@
 '''--- Datenaufbereitung der Dicts für feebb und Berechnung--- '''
-from berechnungen.feebb import Element, Beam, Postprocessor
-from berechnungen.feebb import Preprocessor, Element, Beam, Postprocessor
-from berechnungen.lastenkombination import MethodeLastkombi
-import matplotlib.pyplot as plt
 import numpy as np
+from berechnungen.feebb import Element, Beam, Postprocessor
+import tkinter as tk
+from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 
 
 class FeebbBerechnung:
@@ -12,35 +11,54 @@ class FeebbBerechnung:
         self.lastenkombination = self.eingabemaske.kombi_berechnung
         self.system_memory = {}  # Ergebnis-Cache für GZT und GZG
 
+    # def update_feebb_threaded(self):
+
+    #         self.update_feebb()
+    #         maxwerte = self.system_memory['GZT']['max']
+    #         moment = maxwerte["moment"] / 1e6  # [kNm]
+    #         querkraft = maxwerte["querkraft"] / 1e3  # [kN]
+
+    #         # GUI-Update im Hauptthread
+
     def update_feebb(self):
         """Aktualisiert die feebb-Berechnung und speichert die Ergebnisse."""
-        print("📣 Update feebb gestartet")
-        # Querschnittsdaten laden, falls noch nicht vorhanden
-        plt.close('all')
-        if not self.eingabemaske.querschnitt_memory:
-            print("📌 Querschnittdaten nicht gefunden – Update wird erzwungen.")
-            self.eingabemaske.update_querschnitt_memory()
+        try:
+            print("📣 Update feebb gestartet")
+            # # Querschnittsdaten laden, falls noch nicht vorhanden
+            # plt.close('all')
+            # if not self.eingabemaske.querschnitt_memory:
+            #     print("📌 Querschnittdaten nicht gefunden – Update wird erzwungen.")
+            #     self.eingabemaske.update_querschnitt_memory()
 
-        qs = self.eingabemaske.querschnitt_memory
+            # qs = self.eingabemaske.querschnitt_memory
 
-        # Optional: Immer noch leer? Dann abbrechen
-        if not qs or "E" not in qs or "I_y" not in qs:
-            raise ValueError(
-                "❌ Querschnittdaten konnten nicht geladen werden.")
+            # # Optional: Immer noch leer? Dann abbrechen
+            # if not qs or "E" not in qs or "I_y" not in qs:
+            #     raise ValueError(
+            #         "❌ Querschnittdaten konnten nicht geladen werden.")
 
-        gzt, gzg = self.erstelle_feebb_dicts()
-        self.system_memory = berechne_feebb_gzt_gzg(gzt, gzg)
+            gzt, gzg = self.erstelle_feebb_dicts()
+            self.system_memory = berechne_feebb_gzt_gzg(gzt, gzg)
 
-        maxwerte = self.system_memory['GZT']['max']
-        print(f"✅ FE-Berechnung abgeschlossen")
-        print(f"🔹 Max. Moment: {maxwerte['moment']/1e6:.2f} kNm")
-        print(f"🔹 Max. Durchbiegung: {maxwerte['durchbiegung']:.2f} mm")
-        print(f"🔹 Max. Querkraft: {maxwerte['querkraft']/1e3:.2f} kN")
-        # GZT-Verläufe anzeigen
-        moment = self.system_memory['GZT']['moment']
-        querkraft = self.system_memory['GZT']['querkraft']
-        durchbiegung = self.system_memory['GZT']['durchbiegung']
-        zeichne_gzt_verlaeufe(moment, querkraft, durchbiegung)
+            maxwerte = self.system_memory['GZT']['max']
+            self.max_moment_feebb = maxwerte['moment']/1e6
+            self.max_querkraft_feebb = maxwerte['querkraft']/1e3
+            print(f"✅ FE-Berechnung abgeschlossen")
+            print(f"🔹 Max. Moment: {maxwerte['moment']/1e6:.2f} kNm")
+            print(f"🔹 Max. Durchbiegung: {maxwerte['durchbiegung']:.2f} mm")
+            print(f"🔹 Max. Querkraft: {maxwerte['querkraft']/1e3:.2f} kN")
+            self.moment = self.system_memory['GZT']['moment']
+            self.querkraft = self.system_memory['GZT']['querkraft']
+            self.durchbiegung = self.system_memory['GZT']['durchbiegung']
+
+            # Schnittkräfte übergeben
+            self.eingabemaske.root.after(0, lambda: self.eingabemaske.max_moment_kalt.config(
+                text=f"{self.max_moment_feebb:.1f}"))
+            self.eingabemaske.root.after(0, lambda: self.eingabemaske.max_querkraft_kalt.config(
+                text=f"{self.max_querkraft_feebb:.1f}"))
+
+        except Exception as e:
+            print("⚠️ Fehler im FE-Thread:", e)
 
     def erstelle_feebb_dicts(self):
         """
@@ -75,7 +93,7 @@ class FeebbBerechnung:
         kragarm_links_ende = None
         if self.eingabemaske.kragarm_links.get():
             l = self.eingabemaske.spannweiten_memory.get("kragarm_links", 0)
-            n = int(round(l * 20))
+            n = int(round(l * 30))
             l_mm = l * 1000 / n
             for _ in range(n):
                 all_elements.append({
@@ -96,7 +114,7 @@ class FeebbBerechnung:
         ]
 
         for idx, feld in enumerate(normale_felder):
-            n = int(round(feld * 5))
+            n = int(round(feld * 20))
             l_mm = feld * 1000 / n
             for _ in range(n):
                 all_elements.append({
@@ -191,6 +209,53 @@ class FeebbBerechnung:
 
         return gzt, gzg
 
+    def zeichne_gzt_verlaeufe(self):
+        import matplotlib.pyplot as plt  # <- Lokaler Import
+        if self.eingabemaske.schnittgroeßen_anzeige_button.get():
+            # Schnittkräfte definieren
+            moment = self.system_memory['GZT']['moment']
+            querkraft = self.system_memory['GZT']['querkraft']
+            durchbiegung = self.system_memory['GZT']['durchbiegung']
+            x = np.linspace(0, 1, len(moment))
+
+            fig, axs = plt.subplots(3, 1, figsize=(12, 10), sharex=True)
+
+            axs[0].plot(x, np.array(moment) / 1e6, color='tab:blue')
+            axs[0].fill_between(x, np.array(moment) / 1e6,
+                                0, color='tab:blue', alpha=0.3)
+            axs[0].set_ylabel("M(x) [kNm]")
+            axs[0].set_title("Momentenverlauf (GZT)")
+            axs[0].grid(True)
+
+            axs[1].plot(x, np.array(querkraft) / 1e3, color='tab:red')
+            axs[1].fill_between(x, np.array(querkraft) / 1e3,
+                                0, color='tab:red', alpha=0.3)
+            axs[1].set_ylabel("V(x) [kN]")
+            axs[1].set_title("Querkraftverlauf (GZT)")
+            axs[1].grid(True)
+
+            axs[2].plot(x, durchbiegung, color='tab:green')
+            axs[2].fill_between(x, durchbiegung, 0,
+                                color='tab:green', alpha=0.3)
+            axs[2].set_ylabel("w(x) [mm]")
+            axs[2].set_title("Durchbiegung (GZT)")
+            axs[2].set_xlabel("normierte Trägerlänge")
+            axs[2].grid(True)
+
+            plt.tight_layout()
+
+            # Neuen tkinter-Plot-Dialog öffnen
+            fenster = tk.Toplevel(self.eingabemaske.root)
+            fenster.title("Schnittkraftverläufe GZT")
+            fenster.geometry("1000x800")
+
+            canvas = FigureCanvasTkAgg(fig, master=fenster)
+            canvas.draw()
+            canvas.get_tk_widget().pack(fill=tk.BOTH, expand=True)
+
+        else:
+            plt.close('all')
+
 
 def berechne_feebb_gzt_gzg(gzt_dict, gzg_dicts, num_points=100):
     # GZT-Berechnung
@@ -236,33 +301,3 @@ def berechne_feebb_gzt_gzg(gzt_dict, gzg_dicts, num_points=100):
         },
         "GZG": gzg
     }
-
-
-def zeichne_gzt_verlaeufe(moment, querkraft, durchbiegung):
-    plt.close('all')
-    x = np.linspace(0, 1, len(moment))
-    fig, axs = plt.subplots(3, 1, figsize=(12, 10), sharex=True)
-
-    axs[0].plot(x, np.array(moment) / 1e6, color='tab:blue')
-    axs[0].fill_between(x, np.array(moment) / 1e6, 0,
-                        color='tab:blue', alpha=0.3)
-    axs[0].set_ylabel("M(x) [kNm]")
-    axs[0].set_title("Momentenverlauf (GZT)")
-    axs[0].grid(True)
-
-    axs[1].plot(x, np.array(querkraft) / 1e3, color='tab:red')
-    axs[1].fill_between(x, np.array(querkraft) / 1e3,
-                        0, color='tab:red', alpha=0.3)
-    axs[1].set_ylabel("V(x) [kN]")
-    axs[1].set_title("Querkraftverlauf (GZT)")
-    axs[1].grid(True)
-
-    axs[2].plot(x, durchbiegung, color='tab:green')
-    axs[2].fill_between(x, durchbiegung, 0, color='tab:green', alpha=0.3)
-    axs[2].set_ylabel("w(x) [mm]")
-    axs[2].set_title("Durchbiegung (GZT)")
-    axs[2].set_xlabel("normierte Trägerlänge")
-    axs[2].grid(True)
-
-    plt.tight_layout()
-    plt.show()

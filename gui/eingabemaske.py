@@ -3,8 +3,7 @@ from tkinter import ttk
 import time
 import json
 import hashlib
-import matplotlib.pyplot as plt
-
+import threading
 
 # Datenbank importieren
 from datenbank.datenbank_holz import datenbank_holz_class
@@ -457,13 +456,13 @@ class Eingabemaske:
         self.nkl_dropdown.bind("<<ComboboxSelected>>",
                                lambda e: self.update_lasten_memory())
         self.radio_lastkombi_1 = ttk.Radiobutton(self.lasten_frame, text="Maßgebender Lastfall", variable=self.anzeige_lastkombis, value=1,
-                                                 command=self.schedule_berechnung)
+                                                 command=self.kombi_wechsel_thread)
         self.radio_lastkombi_1.grid(
-            row=row, column=4, sticky="w", pady=(10, 0))
+            row=row, column=4, sticky="w", pady=(0, 0))
         self.radio_lastkombi_2 = ttk.Radiobutton(self.lasten_frame, text="Alle Lastfälle", variable=self.anzeige_lastkombis, value=2,
-                                                 command=self.schedule_berechnung)
+                                                 command=self.kombi_wechsel_thread)
         self.radio_lastkombi_2.grid(
-            row=row+1, column=4, sticky="w", pady=(10, 0))
+            row=row+1, column=4, sticky="w", pady=(0, 0))
 
     def update_lasten_memory(self, event=None, berechne=True):
         # Falls self.situation_var noch nicht initialisiert ist, versuche es neu zu setzen
@@ -529,20 +528,32 @@ class Eingabemaske:
             self.eingabe_frame, text="Schnittgrößen", padding=10)
         self.schnittgroessen_frame.pack(padx=10, pady=10, fill="x")
 
-        headers = ["", "My,d [kNm]:", "Vz,d [kN]:", "", "", "Runden auf:"]
+        headers = ["Bemessungsfall", "My,d [kNm]:",
+                   "Vz,d [kN]:", "", "", "Runden auf:"]
         for i, header in enumerate(headers):
-            ttk.Label(self.schnittgroessen_frame, text=header, width=9).grid(
-                row=0, column=i, padx=5)
+            ttk.Label(self.schnittgroessen_frame, text=header).grid(
+                row=0, column=i, padx=5, sticky="w")
 
         ttk.Label(self.schnittgroessen_frame, text="Kaltfall [kN]:").grid(
             row=1, column=0, sticky="w")
         ttk.Label(self.schnittgroessen_frame, text="Warmfall [kN]:").grid(
             row=2, column=0, sticky="w")
 
-        self.rundung_var = tk.StringVar(value="0.1")
-        rundung_combo = ttk.Combobox(self.schnittgroessen_frame, textvariable=self.rundung_var,
-                                     values=["0.1", "0.5", "1.0"], width=5, state="readonly")
-        rundung_combo.grid(row=1, column=5, sticky="w")
+        self.max_moment_kalt = ttk.Label(self.schnittgroessen_frame, text="")
+        self.max_moment_kalt.grid(row=1, column=1, sticky="w")
+        self.max_querkraft_kalt = ttk.Label(
+            self.schnittgroessen_frame, text="")
+        self.max_querkraft_kalt.grid(row=1, column=2, sticky="w")
+
+        # Schnittgrößenanzeige
+        self.schnittgroeßen_anzeige_button = tk.BooleanVar()
+        ttk.Checkbutton(self.schnittgroessen_frame, text="Schnittkraftverläufe anzeigen", variable=self.schnittgroeßen_anzeige_button,
+                        command=self.feebb.zeichne_gzt_verlaeufe).grid(row=3, column=0, columnspan=2, sticky="w", pady=5)
+        # # Rundungseinstellung
+        # self.rundung_var = tk.StringVar(value="0.1")
+        # rundung_combo = ttk.Combobox(self.schnittgroessen_frame, textvariable=self.rundung_var,
+        #                              values=["0.1", "0.5", "1.0"], width=5, state="readonly")
+        # rundung_combo.grid(row=1, column=5, sticky="w")
 
     def querschnitt_eingabe(self):
         self.querschnitt_frame = ttk.LabelFrame(
@@ -1033,7 +1044,6 @@ class Eingabemaske:
 
         def run_geplant():
             self._berechnung_geplant = False
-            plt.close('all')
             self.ensure_berechnung_ready_then_run()
 
         self.root.after(delay, run_geplant)
@@ -1069,14 +1079,28 @@ class Eingabemaske:
 
             self.letzter_daten_hash = aktueller_hash
             print("✅ Daten vollständig – starte Berechnung")
-            self.kombi_anzeiger.aktualisiere_darstellung()
-            self.feebb.update_feebb()
-
+            # self.kombi_anzeiger.aktualisiere_darstellung()
+            # self.feebb.update_feebb()
+            threading.Thread(target=self.kombi_thread, daemon=True).start()
+            threading.Thread(target=self.fe_thread, daemon=True).start()
         except Exception as e:
             print("⚠️ Fehler in ensure_berechnung_ready_then_run:", e)
 
         finally:
             self._berechnung_laeuft = False
+
+    def kombi_thread(self):
+        print("🧵 Starte Thread: Lastkombination")
+        self.kombi_anzeiger.aktualisiere_darstellung_threaded()
+
+    def kombi_wechsel_thread(self):
+        print("🧵 Starte Thread: Lastkombination")
+        threading.Thread(
+            target=self.kombi_anzeiger.aktualisiere_darstellung_threaded, daemon=True).start()
+
+    def fe_thread(self):
+        print("🧵 Starte Thread: FE-Berechnung")
+        self.feebb.update_feebb()
 
 
 def starte_gui():

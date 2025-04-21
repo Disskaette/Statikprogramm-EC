@@ -1,6 +1,5 @@
-import matplotlib.pyplot as plt
-from io import BytesIO
 from PIL import Image, ImageTk
+from io import BytesIO
 
 
 class MethodeLastkombi:
@@ -153,6 +152,11 @@ class MethodeLastkombi:
         return kombis
 
     def render_latex_to_image(self, latex_str):
+        import matplotlib
+        matplotlib.use("Agg")  # Setzt das Backend nur für diesen Importzweig
+        import matplotlib.pyplot as plt
+        from matplotlib.backends.backend_agg import FigureCanvasAgg as FigureCanvas
+
         fig, ax = plt.subplots(figsize=(4, 0.05), dpi=200)
         fig.patch.set_visible(False)
         ax.axis("off")

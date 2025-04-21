@@ -2,6 +2,7 @@ import tkinter as tk
 from tkinter import ttk
 from berechnungen.lastenkombination import MethodeLastkombi
 from PIL import Image, ImageTk
+import threading
 
 
 class LastkombiAnzeiger:
@@ -79,3 +80,58 @@ class LastkombiAnzeiger:
             error_label = ttk.Label(
                 self.latex_frame_lastkombination, text=f"⚠️ Fehler: {e}")
             error_label.pack()
+
+    def aktualisiere_darstellung_threaded(self):
+        def worker():
+            try:
+                latex_kombis = self.kombi_berechnung.berechne_dynamische_lastkombination()
+                bilder = []
+
+                if self.eingabemaske.anzeige_lastkombis.get() == 1:
+                    kombiliste = [item for item in latex_kombis.items()
+                                  if item[1].get("massgebend")]
+                else:
+                    kombiliste = list(latex_kombis.items())
+
+                for _, kombi in kombiliste:
+                    img = self.kombi_berechnung.render_latex_to_image(
+                        kombi["latex"])
+                    bilder.append(("kombi", img))
+
+                massgebende = next(
+                    (k for k in latex_kombis.values() if k.get("massgebend")), None)
+                if massgebende:
+                    img_ed = self.kombi_berechnung.render_latex_to_image(
+                        massgebende["latex_ed"])
+                    bilder.append(("ed", img_ed))
+
+                # Bilder an Hauptthread übergeben
+                self.parent.after(0, lambda: self.zeige_bilder(bilder))
+
+            except Exception as e:
+                self.parent.after(0, lambda: self.zeige_fehler(e))
+
+        threading.Thread(target=worker, daemon=True).start()
+
+    def zeige_bilder(self, bilder):
+        for widget in self.latex_frame_lastkombination.winfo_children():
+            widget.destroy()
+        for widget in self.latex_frame_bemessungslast.winfo_children():
+            widget.destroy()
+
+        for typ, img in bilder:
+            tk_bild = ImageTk.PhotoImage(img)
+            label = tk.Label(
+                self.latex_frame_bemessungslast if typ == "ed"
+                else self.latex_frame_lastkombination,
+                image=tk_bild
+            )
+            label.image = tk_bild  # Referenz speichern!
+            label.pack(anchor="w", pady=5)
+
+    def zeige_fehler(self, e):
+        for widget in self.latex_frame_lastkombination.winfo_children():
+            widget.destroy()
+        label = ttk.Label(self.latex_frame_lastkombination,
+                          text=f"⚠️ Fehler: {e}")
+        label.pack()
