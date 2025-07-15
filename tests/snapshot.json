@@ -1,0 +1,40 @@
+{
+    "sprungmass": 1.0,
+    "lasten": [
+        {
+            "lastfall": "g",
+            "wert": 7.41,
+            "kategorie": "Eigengewicht",
+            "kommentar": "",
+            "nkl": 1
+        },
+        {
+            "lastfall": "s",
+            "wert": 7.41,
+            "kategorie": "Schneelast bis 1.000 m",
+            "kommentar": "",
+            "nkl": 1
+        },
+        {
+            "lastfall": "w",
+            "wert": 7.41,
+            "kategorie": "Windlast",
+            "kommentar": "",
+            "nkl": 1
+        }
+    ],
+    "spannweiten": {
+        "feld_1": 5.0,
+        "feld_2": 5.0
+    },
+    "querschnitt": {
+        "breite_qs": 160.0,
+        "hoehe_qs": 300.0,
+        "I_y": 360000000.0,
+        "W_y": 2400000.0,
+        "materialgruppe": "Balken",
+        "typ": "Nadelholz",
+        "festigkeitsklasse": "C14",
+        "E": 7000
+    }
+}
