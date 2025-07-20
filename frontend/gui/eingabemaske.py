@@ -442,11 +442,11 @@ class Eingabemaske:
         self.nkl_dropdown.bind("<<ComboboxSelected>>",
                                lambda e: self.on_any_change())
         self.radio_lastkombi_1 = ttk.Radiobutton(self.lasten_frame, text="Maßgebender Lastfall", variable=self.anzeige_lastkombis, value=1,
-                                                 command=self.on_any_change)
+                                                 command=lambda: self.kombi_anzeiger.aktualisiere_darstellung_threaded(self.lastkombis_renew))
         self.radio_lastkombi_1.grid(
             row=row, column=4, sticky="w", pady=(0, 0))
         self.radio_lastkombi_2 = ttk.Radiobutton(self.lasten_frame, text="Alle Lastfälle", variable=self.anzeige_lastkombis, value=2,
-                                                 command=self.on_any_change)
+                                                 command=lambda: self.kombi_anzeiger.aktualisiere_darstellung_threaded(self.lastkombis_renew))
         self.radio_lastkombi_2.grid(
             row=row+1, column=4, sticky="w", pady=(0, 0))
 
@@ -475,7 +475,7 @@ class Eingabemaske:
         # Schnittgrößenanzeige
         self.schnittgroeßen_anzeige_button = tk.BooleanVar()
         ttk.Checkbutton(self.schnittgroessen_frame, text="Schnittkraftverläufe anzeigen",
-                        variable=self.schnittgroeßen_anzeige_button).grid(row=3, column=0, columnspan=2, sticky="w", pady=5)
+                        variable=self.schnittgroeßen_anzeige_button, command=self.kombi_anzeiger.toggle_schnittkraftfenster).grid(row=3, column=0, columnspan=2, sticky="w", pady=5)
         # # # Rundungseinstellung
         # self.rundung_var = tk.StringVar(value="0.1")
         # rundung_combo = ttk.Combobox(self.schnittgroessen_frame, textvariable=self.rundung_var,
@@ -857,7 +857,8 @@ class Eingabemaske:
                 "spannweiten": self.get_spannweiten_dict(),
                 "querschnitt": self.get_querschnitt_dict()
             }
-            # print(snapshot)
+            self.snapshot = snapshot
+            print(snapshot)
             self.orch.process_snapshot(snapshot, self._on_service_done)
 
     def _on_service_done(self, result=None, errors=None):
@@ -865,13 +866,25 @@ class Eingabemaske:
             if errors:
                 self.show_error_messages(errors)
                 return
-            # Extrahiere die Lastfallkombinationen, falls vorhanden
-            if result and "Lastfallkombinationen" in result:
-                lastkombis = result["Lastfallkombinationen"]
+            self.result = result
+            # Sicherstellen, dass result ein Dictionary ist
+            if not result:
+                self.lastkombis_renew = {}
                 self.kombi_anzeiger.aktualisiere_darstellung_threaded(
-                    lastkombis)
+                    self.lastkombis_renew)
+                return
+
+            # Jetzt wie gehabt auswerten
+            if "Lastfallkombinationen" in self.result:
+                self.lastkombis_renew = self.result["Lastfallkombinationen"]
+            elif len(self.result) == 1:
+                self.lastkombis_renew = self.result
             else:
-                self.kombi_anzeiger.aktualisiere_darstellung_threaded({})
+                self.lastkombis_renew = {}
+
+            self.kombi_anzeiger.aktualisiere_darstellung_threaded(
+                self.lastkombis_renew)
+        self.kombi_anzeiger._close_schnittkraftfenster()
         self.eingabe_frame.after(0, handle)
 
     def show_error_messages(self, errors: list):

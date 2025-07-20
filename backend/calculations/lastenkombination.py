@@ -170,6 +170,7 @@ class MethodeLastkombi:
             k["massgebend"] = False  # Feld wird neu erstellt → überall False
         # Nur für die eine Kombination → True
         kombis[name]["massgebend"] = True
+        print(kombis)
         return {"Lastfallkombinationen": kombis}
 
     def render_latex_to_image(self, latex_str):
