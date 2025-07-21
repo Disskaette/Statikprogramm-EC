@@ -32,93 +32,189 @@ class SystemAnzeiger:
         self.system_image_frame.pack(fill="both", expand=True)
 
     def update(self, snapshot, callback=None):
-        self.snapshot = snapshot
-        self.frame_system.update_idletasks()
-        # Korrekter Aufruf mit lambda auf einem Widget
-        self.frame_system.after(100, lambda: self.threaded_update(callback))
+        """Startet die Aktualisierung des System-Plots in einem separaten Thread."""
+        logger.info("SystemAnzeiger: Update-Anfrage erhalten.")
+        # Starte die Datenaufbereitung in einem Hintergrund-Thread
+        thread = threading.Thread(
+            target=self._run_update_in_thread, args=(snapshot, callback))
+        thread.daemon = True
+        thread.start()
 
-    def threaded_update(self, callback):
+    def _run_update_in_thread(self, snapshot, callback):
+        """Diese Methode läuft im Hintergrund-Thread."""
         try:
-            logger.info("SystemAnzeiger: Update gestartet")
-            spannweiten_dict = self.snapshot["spannweiten"]
-            namen = list(spannweiten_dict.keys())
-            werte = list(spannweiten_dict.values())
-            hat_kragarm_links = "kragarm_links" in namen
-            hat_kragarm_rechts = "kragarm_rechts" in namen
-            felder = [wert for name, wert in zip(
-                namen, werte) if name.startswith("feld_")]
-            kragarm_links = spannweiten_dict.get("kragarm_links", 0)
-            kragarm_rechts = spannweiten_dict.get("kragarm_rechts", 0)
-            pos = [0]
-            if hat_kragarm_links:
-                pos[0] = -kragarm_links
-            for feld in felder:
-                pos.append(pos[-1] + feld)
-            auflager_pos = pos.copy()
-            if hat_kragarm_links:
-                auflager_pos = pos[1:]
-            if hat_kragarm_rechts:
-                auflager_pos = auflager_pos[:-1]
-            fig, ax = plt.subplots(figsize=(8, 2))
-            traeger_start = pos[0]
-            traeger_ende = pos[-1]
-            ax.plot([traeger_start, traeger_ende], [
-                    1, 1], color='black', linewidth=2)
-            for i, x in enumerate(auflager_pos):
-                if i == 0:
-                    ax.plot([x, x-0.18, x+0.18, x], [1, 0.7, 0.7, 1],
-                            color='black', linewidth=2)
-                    ax.plot([x-0.18, x+0.18], [0.7, 0.7],
-                            color='black', linewidth=4)
-                else:
-                    ax.plot([x, x-0.18, x+0.18, x], [1, 0.7, 0.7, 1],
-                            color='black', linewidth=2)
-                ax.text(x, 1.13, chr(65+i), ha='center',
-                        va='bottom', fontsize=12)
-            for i in range(len(auflager_pos)-1):
-                x1 = auflager_pos[i]
-                x2 = auflager_pos[i+1]
-                ax.annotate(
-                    '', xy=(x1, 0.5), xytext=(x2, 0.5),
-                    arrowprops=dict(arrowstyle='<->',
-                                    lw=1.2, color='black')
-                )
-                spannweite = x2 - x1
-                ax.text((x1+x2)/2, 0.4, f"{spannweite:.2f} m",
-                        ha='center', va='top', fontsize=11)
-            ax.axis('off')
-            ax.set_aspect('equal')
-            ax.set_xlim(traeger_start-1, traeger_ende+1)
-            ax.set_ylim(0, 1.3)
-            buf = io.BytesIO()
-            fig.savefig(buf, format='png', bbox_inches='tight', dpi=100)
-            plt.close(fig)
-            buf.seek(0)
-            img = Image.open(buf)
-            # Das Pillow-Bild UND den Buffer an den Haupt-Thread übergeben
-            self.parent.after(0, lambda: self.zeige_bilder(
-                img, buf, callback=callback))
-
+            logger.info(
+                "SystemAnzeiger: Datenaufbereitung im Thread gestartet.")
+            plot_data = self._prepare_plot_data(snapshot)
+            # Übergibt die reinen Daten an den Haupt-Thread zum Zeichnen
+            self.parent.after(
+                0, lambda: self._draw_system(plot_data, callback))
         except Exception as e:
+            logger.error(f"Fehler bei der Plot-Datenaufbereitung: {e}")
             self.parent.after(0, lambda err=e: self.zeige_fehler(err))
 
-    def zeige_bilder(self, img, buf, callback=None):
-        for widget in self.system_image_frame.winfo_children():
-            widget.destroy()
+    def _prepare_plot_data(self, snapshot):
+        """Bereitet alle notwendigen Koordinaten und Daten für den Plot vor. Läuft im Hintergrund-Thread."""
+        spannweiten_dict = snapshot["spannweiten"]
+        namen = list(spannweiten_dict.keys())
+        werte = list(spannweiten_dict.values())
 
-        # Das Tkinter-Bild wird jetzt hier im Haupt-Thread erstellt
-        self.tk_img = ImageTk.PhotoImage(img)
-        buf.close()  # Den Buffer erst hier schließen, nachdem das Bild erstellt wurde
+        hat_kragarm_links = "kragarm_links" in namen
+        kragarm_links_len = spannweiten_dict.get("kragarm_links", 0)
+        hat_kragarm_rechts = "kragarm_rechts" in namen
+        kragarm_rechts_len = spannweiten_dict.get("kragarm_rechts", 0)
+        felder = [wert for name, wert in zip(
+            namen, werte) if name.startswith("feld_")]
 
-        label = tk.Label(self.system_image_frame,
-                         image=self.tk_img
-                         )
-        label.image = self.tk_img  # Referenz speichern!
-        label.pack(anchor="w", pady=5)
-        if callback:
-            self.system_image_frame.after(10, callback)
+        segments = []
+        current_pos = 0
+
+        # Linken Kragarm hinzufügen
+        if hat_kragarm_links:
+            start = -kragarm_links_len
+            end = 0
+            segments.append({"label": "Kragarm links", "start": start,
+                            "end": end, "len": kragarm_links_len})
+            current_pos = 0
+
+        # Felder hinzufügen
+        for i, feld_len in enumerate(felder):
+            start = current_pos
+            end = current_pos + feld_len
+            segments.append(
+                {"label": f"Feld {i+1}", "start": start, "end": end, "len": feld_len})
+            current_pos = end
+
+        # Rechten Kragarm hinzufügen
+        if hat_kragarm_rechts:
+            start = current_pos
+            end = current_pos + kragarm_rechts_len
+            segments.append({"label": "Kragarm R", "start": start,
+                            "end": end, "len": kragarm_rechts_len})
+
+        # Auflagerpositionen bestimmen
+        auflager_pos = []
+        if segments:
+            # Das erste Auflager ist am Ende des ersten Segments, wenn es ein Kragarm ist,
+            # oder am Anfang, wenn es ein Feld ist.
+            if segments[0]['label'] == 'Kragarm L':
+                auflager_pos.append(segments[0]['end'])
+            else:
+                auflager_pos.append(segments[0]['start'])
+
+            # Auflager zwischen den Feldern und am Ende
+            for i in range(len(segments)):
+                # Ein Auflager existiert am Ende jedes Feldes
+                if segments[i]['label'].startswith('Feld'):
+                    auflager_pos.append(segments[i]['end'])
+
+        # Duplikate entfernen und sortieren
+        auflager_pos = sorted(list(set(auflager_pos)))
+
+        return {
+            "segments": segments,
+            "auflager_pos": auflager_pos,
+            "traeger_start": segments[0]['start'] if segments else 0,
+            "traeger_ende": segments[-1]['end'] if segments else 0
+        }
+
+    def _draw_system(self, plot_data, callback):
+        """Zeichnet das System mit Matplotlib. Läuft im Haupt-Thread."""
+        try:
+            logger.info("SystemAnzeiger: Zeichnung im Haupt-Thread gestartet.")
+            # Entpacke die vorbereiteten Daten
+            segments = plot_data["segments"]
+            auflager_pos = plot_data["auflager_pos"]
+            traeger_start = plot_data["traeger_start"]
+            traeger_ende = plot_data["traeger_ende"]
+
+            fig, ax = plt.subplots(figsize=(8, 2))
+            if not segments:
+                # Leeren Plot zeichnen, wenn keine Daten vorhanden sind
+                ax.plot([0, 5], [1, 1], color='black', linewidth=2)
+            else:
+                ax.plot([traeger_start, traeger_ende], [
+                        1, 1], color='black', linewidth=2)
+
+            # Auflager zeichnen
+            for i, x in enumerate(auflager_pos):
+                is_fixed = (i == 0 and not any(
+                    seg['label'] == 'Kragarm links' for seg in segments))
+
+                # Dreieck (Spitze jetzt exakt auf dem Träger)
+                ax.plot([x, x-0.2, x+0.2, x], [1.0, 0.6, 0.6, 1.0],
+                        color='black', linewidth=1.5)
+                ax.text(x, 1.08, chr(65+i), ha='center',
+                        va='bottom', fontsize=12)
+
+                if is_fixed:
+                    # Festlager: Längerer, dünnerer Strich
+                    ax.plot([x-0.25, x+0.25], [0.55, 0.55],
+                            color='black', linewidth=1.5)
+                else:
+                    # Loslager: Kürzerer Strich mit Abstand unter dem Dreieck
+                    ax.plot([x-0.2, x+0.2], [0.5, 0.5],
+                            color='black', linewidth=1.5)
+
+            # Bemaßung und Beschriftung für jedes Segment
+            label_pos_high = False  # Flag für alternierende Position
+            for seg in segments:
+                x1, x2 = seg['start'], seg['end']
+                # Bemaßungspfeil (tiefer gesetzt)
+                ax.annotate('', xy=(x1, 0.2), xytext=(x2, 0.2), arrowprops=dict(
+                    arrowstyle='<->', lw=1.2, color='black'))
+
+                # Bemaßungstext (ganz unten)
+                ax.text(
+                    (x1+x2)/2, 0.1, f"{seg['len']:.2f} m", ha='center', va='top', fontsize=11)
+
+                # Logik für Beschriftungsposition
+                y_pos = 1.05  # Standard-Position über dem Balken
+
+                # Bei kleinen Feldern Position alternieren, um Überlappung zu vermeiden
+                if 'Feld' in seg['label'] and seg['len'] < 2.5:
+                    if label_pos_high:
+                        y_pos = 1.3  # Höhere Position
+                    label_pos_high = not label_pos_high
+                else:
+                    # Bei großen Feldern oder Kragarmen, den Alternator zurücksetzen
+                    label_pos_high = False
+
+                # Beschriftung (z.B. "Feld 1") an der berechneten Position zeichnen
+                ax.text((x1+x2)/2, y_pos,
+                        seg['label'], ha='center', va='bottom', fontsize=10)
+
+            ax.axis('off')
+            ax.set_aspect('equal')
+            ax.set_xlim(traeger_start - 0.5, traeger_ende + 0.5)
+            ax.set_ylim(0, 1.8)  # Y-Limit erhöht für mehr Platz
+
+            buf = io.BytesIO()
+            fig.savefig(buf, format='png', bbox_inches='tight', dpi=100)
+            plt.close(fig)  # Wichtig: Figur schließen, um Speicher freizugeben
+            buf.seek(0)
+
+            # Tkinter-Bild erstellen und im Label anzeigen
+            img = Image.open(buf)
+            photo = ImageTk.PhotoImage(img)
+
+            for widget in self.system_image_frame.winfo_children():
+                widget.destroy()
+
+            label = ttk.Label(self.system_image_frame, image=photo)
+            # WICHTIG: Referenz auf das Bild speichern, um Garbage Collection zu verhindern!
+            label.image = photo
+            label.pack()
+
+            if callback:
+                callback()
+
+        except Exception as e:
+            logger.error(f"Fehler beim Zeichnen des System-Plots: {e}")
+            self.zeige_fehler(e)
 
     def zeige_fehler(self, e):
+        # Bestehende Widgets im Frame entfernen
         for widget in self.system_image_frame.winfo_children():
             widget.destroy()
         label = ttk.Label(self.system_image_frame,

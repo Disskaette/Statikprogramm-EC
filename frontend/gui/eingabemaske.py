@@ -855,7 +855,7 @@ class Eingabemaske:
         # Debounce-Logik: Bricht den vorherigen Timer ab und startet einen neuen.
         if self._update_timer is not None:
             self.root.after_cancel(self._update_timer)
-        self._update_timer = self.root.after(300, self._perform_update)
+        self._update_timer = self.root.after(1000, self._perform_update)
 
     def _perform_update(self):
         """Diese Methode wird nach einer kurzen Pause bei den Eingaben ausgeführt und enthält die ursprüngliche Logik von on_any_change."""
