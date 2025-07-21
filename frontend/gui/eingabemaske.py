@@ -7,8 +7,10 @@ import customtkinter as ctk
 from backend.database.datenbank_holz import datenbank_holz_class
 from backend.calculations.lastenkombination import MethodeLastkombi
 from frontend.display.anzeige_lastkombination import LastkombiAnzeiger
-from backend.calculations.feebb_schnittstelle import FeebbBerechnung
+from frontend.display.anzeige_feebb import FeebbAnzeiger
 from backend.service.orchestrator_service import OrchestratorService
+from frontend.display.anzeige_system import SystemAnzeiger
+from frontend.frontend_orchestrator import FrontendOrchestrator
 
 # Root-Logger-Verhalten
 logging.basicConfig(
@@ -31,7 +33,7 @@ class Eingabemaske:
         # Importe
         self.db = datenbank_holz_class()
         self.kombi_berechnung = MethodeLastkombi(self, self.db)
-        self.feebb = FeebbBerechnung(self)
+        self.feebb = FeebbAnzeiger(self)
         self.orch = OrchestratorService()
         # Fenstergröße änderbar händisch
         self.fenster_manuell_verkleinert = False
@@ -103,6 +105,7 @@ class Eingabemaske:
         self.letzter_daten_hash = None
         self._berechnung_timer_id = None
         self._berechnungsversuche = 0
+        self._update_timer = None
 
         '''Scrollbar'''
         # Wrapper-Frame für Scrollbereich
@@ -136,10 +139,14 @@ class Eingabemaske:
 
         self.ausgabe_frame = ttk.Frame(self.content_frame)
         self.ausgabe_frame.grid(row=0, column=1, sticky="nw")
+        self.system_anzeiger = SystemAnzeiger(self.ausgabe_frame, self)
         self.kombi_anzeiger = LastkombiAnzeiger(
             self.ausgabe_frame, self, self.db)
+        self.orch_front = FrontendOrchestrator(
+            self.system_anzeiger, self.kombi_anzeiger)
 
         # Scrollregion automatisch anpassen
+
         def update_scrollregion(event=None):
             self.canvas.configure(scrollregion=self.canvas.bbox("all"))
 
@@ -475,7 +482,7 @@ class Eingabemaske:
         # Schnittgrößenanzeige
         self.schnittgroeßen_anzeige_button = tk.BooleanVar()
         ttk.Checkbutton(self.schnittgroessen_frame, text="Schnittkraftverläufe anzeigen",
-                        variable=self.schnittgroeßen_anzeige_button, command=self.kombi_anzeiger.toggle_schnittkraftfenster).grid(row=3, column=0, columnspan=2, sticky="w", pady=5)
+                        variable=self.schnittgroeßen_anzeige_button, command=self.feebb.toggle_schnittkraftfenster).grid(row=3, column=0, columnspan=2, sticky="w", pady=5)
         # # # Rundungseinstellung
         # self.rundung_var = tk.StringVar(value="0.1")
         # rundung_combo = ttk.Combobox(self.schnittgroessen_frame, textvariable=self.rundung_var,
@@ -845,6 +852,13 @@ class Eingabemaske:
                                             self.on_any_change)
 
     def on_any_change(self, event=None):
+        # Debounce-Logik: Bricht den vorherigen Timer ab und startet einen neuen.
+        if self._update_timer is not None:
+            self.root.after_cancel(self._update_timer)
+        self._update_timer = self.root.after(300, self._perform_update)
+
+    def _perform_update(self):
+        """Diese Methode wird nach einer kurzen Pause bei den Eingaben ausgeführt und enthält die ursprüngliche Logik von on_any_change."""
         if self.gui_fertig_geladen:
             try:
                 self.sprungmass = float(
@@ -858,10 +872,12 @@ class Eingabemaske:
                 "querschnitt": self.get_querschnitt_dict()
             }
             self.snapshot = snapshot
-            print(snapshot)
             self.orch.process_snapshot(snapshot, self._on_service_done)
+            # print(snapshot)
 
-    def _on_service_done(self, result=None, errors=None):
+    def _on_service_done(self, result, errors):
+        """Callback, der nach Abschluss des OrchestratorService aufgerufen wird."""
+
         def handle():
             if errors:
                 self.show_error_messages(errors)
@@ -874,7 +890,7 @@ class Eingabemaske:
                     self.lastkombis_renew)
                 return
 
-            # Jetzt wie gehabt auswerten
+            # Auswertung Lastfallkombis
             if "Lastfallkombinationen" in self.result:
                 self.lastkombis_renew = self.result["Lastfallkombinationen"]
             elif len(self.result) == 1:
@@ -882,9 +898,13 @@ class Eingabemaske:
             else:
                 self.lastkombis_renew = {}
 
-            self.kombi_anzeiger.aktualisiere_darstellung_threaded(
-                self.lastkombis_renew)
-        self.kombi_anzeiger._close_schnittkraftfenster()
+            self.orch_front.update_all(
+                snapshot=self.snapshot, lastkombis=self.lastkombis_renew)
+
+            self.feebb.close_schnittkraftfenster()
+            self.feebb.update_maxwerte()
+
+        # Führt den handle-Code im Haupt-Thread aus, um Thread-Konflikte zu vermeiden
         self.eingabe_frame.after(0, handle)
 
     def show_error_messages(self, errors: list):

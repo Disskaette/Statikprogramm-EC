@@ -30,7 +30,7 @@ class OrchestratorService:
         # 2) Validierung
         errors = validate_input(snapshot)
         if errors:
-            callback(errors=errors)
+            callback(result=None, errors=errors)
             return
 
         now = time.time()
@@ -60,9 +60,11 @@ class OrchestratorService:
                     'Schnittgroessen': feebb_result['Schnittgroessen'],
                     # 'Querschnitt_Formeln': querschnitt_result['Querschnitt_Formeln']
                 }
-                callback(result=result)
+                # Beide Argumente an den Callback übergeben
+                callback(result=result, errors=None)
             except Exception as e:
-                callback(errors=[str(e)])
+                # Beide Argumente an den Callback übergeben
+                callback(result=None, errors=[str(e)])
             finally:
                 # Nach der Berechnung Snapshot löschen
                # delete_snapshot(snapshot)

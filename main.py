@@ -1,10 +1,10 @@
+from backend.service.project_service import load_project
+from frontend.gui.eingabemaske import Eingabemaske
 import customtkinter as ctk
 import sys
 import os
 import logging
 
-from frontend.gui.eingabemaske import Eingabemaske
-from backend.service.project_service import load_project
 
 #!/usr/bin/env python3
 

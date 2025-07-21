@@ -144,11 +144,11 @@ class FeebbBerechnung:
             supports[node_tracker] = [0, 0]       # Ende freigeben
 
         # === Debug
-        print("📋 Übersicht aller Knotenlagerungen:")
-        print(f"{'Knoten':>6} | {'u':>5} | {'phi':>5}")
-        print("-" * 26)
-        for i, (u, phi) in enumerate(supports):
-            print(f"{i:>6} | {u:>5} | {phi:>5}")
+        # print("📋 Übersicht aller Knotenlagerungen:")
+        # print(f"{'Knoten':>6} | {'u':>5} | {'phi':>5}")
+        # print("-" * 26)
+        # for i, (u, phi) in enumerate(supports):
+        #     print(f"{i:>6} | {u:>5} | {phi:>5}")
 
         # === Rückgabe GZT + GZG
         supports_flat = [v for pair in supports for v in pair]
