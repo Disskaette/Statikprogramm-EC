@@ -1,6 +1,5 @@
 import tkinter as tk
 import threading
-import matplotlib.pyplot as plt
 import logging
 import io
 from PIL import Image, ImageTk
@@ -47,11 +46,12 @@ class SystemAnzeiger:
                 "SystemAnzeiger: Datenaufbereitung im Thread gestartet.")
             plot_data = self._prepare_plot_data(snapshot)
             # Übergibt die reinen Daten an den Haupt-Thread zum Zeichnen
-            self.parent.after(
+            self.eingabemaske.root.after(
                 0, lambda: self._draw_system(plot_data, callback))
         except Exception as e:
             logger.error(f"Fehler bei der Plot-Datenaufbereitung: {e}")
-            self.parent.after(0, lambda err=e: self.zeige_fehler(err))
+            self.eingabemaske.root.after(
+                0, lambda err=e: self.zeige_fehler(err))
 
     def _prepare_plot_data(self, snapshot):
         """Bereitet alle notwendigen Koordinaten und Daten für den Plot vor. Läuft im Hintergrund-Thread."""
@@ -89,7 +89,7 @@ class SystemAnzeiger:
         if hat_kragarm_rechts:
             start = current_pos
             end = current_pos + kragarm_rechts_len
-            segments.append({"label": "Kragarm R", "start": start,
+            segments.append({"label": "Kragarm rechts", "start": start,
                             "end": end, "len": kragarm_rechts_len})
 
         # Auflagerpositionen bestimmen
@@ -97,7 +97,7 @@ class SystemAnzeiger:
         if segments:
             # Das erste Auflager ist am Ende des ersten Segments, wenn es ein Kragarm ist,
             # oder am Anfang, wenn es ein Feld ist.
-            if segments[0]['label'] == 'Kragarm L':
+            if segments[0]['label'] == 'Kragarm links':
                 auflager_pos.append(segments[0]['end'])
             else:
                 auflager_pos.append(segments[0]['start'])
@@ -122,6 +122,12 @@ class SystemAnzeiger:
         """Zeichnet das System mit Matplotlib. Läuft im Haupt-Thread."""
         try:
             logger.info("SystemAnzeiger: Zeichnung im Haupt-Thread gestartet.")
+
+            # ALLE Matplotlib-Operationen hier im Haupt-Thread
+            import matplotlib
+            matplotlib.use('Agg')  # Non-interactive backend
+            import matplotlib.pyplot as plt  # Import hierher verlagert
+
             # Entpacke die vorbereiteten Daten
             segments = plot_data["segments"]
             auflager_pos = plot_data["auflager_pos"]
@@ -198,12 +204,14 @@ class SystemAnzeiger:
             img = Image.open(buf)
             photo = ImageTk.PhotoImage(img)
 
+            # Bestehende Widgets im Frame entfernen
             for widget in self.system_image_frame.winfo_children():
                 widget.destroy()
 
             label = ttk.Label(self.system_image_frame, image=photo)
             # WICHTIG: Referenz auf das Bild speichern, um Garbage Collection zu verhindern!
             label.image = photo
+            self.tk_img = photo  # Zusätzliche Referenz in der Klasse
             label.pack()
 
             if callback:

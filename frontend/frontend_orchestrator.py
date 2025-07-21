@@ -20,7 +20,7 @@ class FrontendOrchestrator:
         )
 
     def _on_system_done(self, lastkombis, update_id):
-        if update_id != self.current_update_id:
+        if self._is_outdated(update_id):
             self.busy = False  # Freigeben für die nächste, aktuellere Berechnung
             if self.pending_args:
                 args = self.pending_args
@@ -28,14 +28,14 @@ class FrontendOrchestrator:
                 self.update_all(*args)
             return  # Diesen veralteten Zweig hier abbrechen
 
-        self.kombi_anzeiger.aktualisiere_darstellung_threaded(
+        self.kombi_anzeiger.update(
             lastkombis,
             callback=lambda: self._on_kombi_done(update_id)
         )
 
     def _on_kombi_done(self, update_id):
         # Auch hier prüfen, falls der letzte Schritt sehr lange gedauert hat
-        if update_id != self.current_update_id:
+        if self._is_outdated(update_id):
             self.busy = False  # Freigeben
             # Hier nicht erneut update_all aufrufen, das passiert schon in _on_system_done
             return
@@ -45,3 +45,6 @@ class FrontendOrchestrator:
             args = self.pending_args
             self.pending_args = None
             self.update_all(*args)
+
+    def _is_outdated(self, update_id):
+        return update_id != self.current_update_id

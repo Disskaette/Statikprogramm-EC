@@ -141,9 +141,10 @@ class Eingabemaske:
         self.ausgabe_frame.grid(row=0, column=1, sticky="nw")
         self.system_anzeiger = SystemAnzeiger(self.ausgabe_frame, self)
         self.kombi_anzeiger = LastkombiAnzeiger(
-            self.ausgabe_frame, self, self.db)
+            self.root, self.ausgabe_frame, self, self.db)
         self.orch_front = FrontendOrchestrator(
-            self.system_anzeiger, self.kombi_anzeiger)
+            self.system_anzeiger,
+            self.kombi_anzeiger)
 
         # Scrollregion automatisch anpassen
 
@@ -449,11 +450,11 @@ class Eingabemaske:
         self.nkl_dropdown.bind("<<ComboboxSelected>>",
                                lambda e: self.on_any_change())
         self.radio_lastkombi_1 = ttk.Radiobutton(self.lasten_frame, text="Maßgebender Lastfall", variable=self.anzeige_lastkombis, value=1,
-                                                 command=lambda: self.kombi_anzeiger.aktualisiere_darstellung_threaded(self.lastkombis_renew))
+                                                 command=lambda: self.kombi_anzeiger.update(self.lastkombis_renew))
         self.radio_lastkombi_1.grid(
             row=row, column=4, sticky="w", pady=(0, 0))
         self.radio_lastkombi_2 = ttk.Radiobutton(self.lasten_frame, text="Alle Lastfälle", variable=self.anzeige_lastkombis, value=2,
-                                                 command=lambda: self.kombi_anzeiger.aktualisiere_darstellung_threaded(self.lastkombis_renew))
+                                                 command=lambda: self.kombi_anzeiger.update(self.lastkombis_renew))
         self.radio_lastkombi_2.grid(
             row=row+1, column=4, sticky="w", pady=(0, 0))
 
@@ -855,7 +856,7 @@ class Eingabemaske:
         # Debounce-Logik: Bricht den vorherigen Timer ab und startet einen neuen.
         if self._update_timer is not None:
             self.root.after_cancel(self._update_timer)
-        self._update_timer = self.root.after(1000, self._perform_update)
+        self._update_timer = self.root.after(200, self._perform_update)
 
     def _perform_update(self):
         """Diese Methode wird nach einer kurzen Pause bei den Eingaben ausgeführt und enthält die ursprüngliche Logik von on_any_change."""
@@ -886,7 +887,7 @@ class Eingabemaske:
             # Sicherstellen, dass result ein Dictionary ist
             if not result:
                 self.lastkombis_renew = {}
-                self.kombi_anzeiger.aktualisiere_darstellung_threaded(
+                self.kombi_anzeiger.update(
                     self.lastkombis_renew)
                 return
 
