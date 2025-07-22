@@ -1,5 +1,4 @@
 import tkinter as tk
-import threading
 import logging
 import io
 from PIL import Image, ImageTk
@@ -31,30 +30,19 @@ class SystemAnzeiger:
         self.system_image_frame.pack(fill="both", expand=True)
 
     def update(self, snapshot, callback=None):
-        """Startet die Aktualisierung des System-Plots in einem separaten Thread."""
+        """Aktualisiert den System-Plot direkt im Haupt-Thread."""
         logger.info("SystemAnzeiger: Update-Anfrage erhalten.")
-        # Starte die Datenaufbereitung in einem Hintergrund-Thread
-        thread = threading.Thread(
-            target=self._run_update_in_thread, args=(snapshot, callback))
-        thread.daemon = True
-        thread.start()
-
-    def _run_update_in_thread(self, snapshot, callback):
-        """Diese Methode läuft im Hintergrund-Thread."""
         try:
-            logger.info(
-                "SystemAnzeiger: Datenaufbereitung im Thread gestartet.")
+            # Datenaufbereitung
             plot_data = self._prepare_plot_data(snapshot)
-            # Übergibt die reinen Daten an den Haupt-Thread zum Zeichnen
-            self.eingabemaske.root.after(
-                0, lambda: self._draw_system(plot_data, callback))
+            # Direkte Zeichnung im Haupt-Thread
+            self._draw_system(plot_data, callback)
         except Exception as e:
-            logger.error(f"Fehler bei der Plot-Datenaufbereitung: {e}")
-            self.eingabemaske.root.after(
-                0, lambda err=e: self.zeige_fehler(err))
+            logger.error(f"Fehler bei der Plot-Erstellung: {e}")
+            self.zeige_fehler(e)
 
     def _prepare_plot_data(self, snapshot):
-        """Bereitet alle notwendigen Koordinaten und Daten für den Plot vor. Läuft im Hintergrund-Thread."""
+        """Bereitet alle notwendigen Koordinaten und Daten für den Plot vor."""
         spannweiten_dict = snapshot["spannweiten"]
         namen = list(spannweiten_dict.keys())
         werte = list(spannweiten_dict.values())

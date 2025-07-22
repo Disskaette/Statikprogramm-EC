@@ -10,6 +10,7 @@ from frontend.display.anzeige_lastkombination import LastkombiAnzeiger
 from frontend.display.anzeige_feebb import FeebbAnzeiger
 from backend.service.orchestrator_service import OrchestratorService
 from frontend.display.anzeige_system import SystemAnzeiger
+from frontend.display.anzeige_nachweis_ec5 import NachweisEC5Anzeiger
 from frontend.frontend_orchestrator import FrontendOrchestrator
 
 # Root-Logger-Verhalten
@@ -142,9 +143,12 @@ class Eingabemaske:
         self.system_anzeiger = SystemAnzeiger(self.ausgabe_frame, self)
         self.kombi_anzeiger = LastkombiAnzeiger(
             self.root, self.ausgabe_frame, self, self.db)
+        self.nachweis_anzeiger = NachweisEC5Anzeiger(
+            self.ausgabe_frame, self)
         self.orch_front = FrontendOrchestrator(
             self.system_anzeiger,
-            self.kombi_anzeiger)
+            self.kombi_anzeiger,
+            self.nachweis_anzeiger)
 
         # Scrollregion automatisch anpassen
 
@@ -870,7 +874,8 @@ class Eingabemaske:
                 "sprungmass": self.sprungmass,
                 "lasten":    self.get_lasten_list(),
                 "spannweiten": self.get_spannweiten_dict(),
-                "querschnitt": self.get_querschnitt_dict()
+                "querschnitt": self.get_querschnitt_dict(),
+                "gebrauchstauglichkeit": self.get_gebrauchstauglichkeit_dict()
             }
             self.snapshot = snapshot
             self.orch.process_snapshot(snapshot, self._on_service_done)
@@ -878,30 +883,36 @@ class Eingabemaske:
 
     def _on_service_done(self, result, errors):
         """Callback, der nach Abschluss des OrchestratorService aufgerufen wird."""
-
         def handle():
             if errors:
                 self.show_error_messages(errors)
                 return
-            self.result = result
-            # Sicherstellen, dass result ein Dictionary ist
+
             if not result:
-                self.lastkombis_renew = {}
-                self.kombi_anzeiger.update(
-                    self.lastkombis_renew)
+                logger.warning(
+                    "Keine Ergebnisse vom Backend-Orchestrator erhalten")
                 return
 
-            # Auswertung Lastfallkombis
-            if "Lastfallkombinationen" in self.result:
-                self.lastkombis_renew = self.result["Lastfallkombinationen"]
-            elif len(self.result) == 1:
-                self.lastkombis_renew = self.result
-            else:
-                self.lastkombis_renew = {}
+            # System Memory für Frontend-Orchestrator vorbereiten
+            self.snapshot['system_memory'] = {
+                'Lastkombinationen': result.get('Lastfallkombinationen', {}),
+                'GZG_Lastkombinationen': result.get('GZG_Lastfallkombinationen', {}),
+                'Schnittgroessen': result.get('Schnittgroessen', {}),
+                'EC5_Nachweise': result.get('EC5_Nachweise', {})
+            }
 
+            # Lastkombinationen für Anzeige extrahieren
+            lastkombis = result.get('Lastfallkombinationen', {})
+
+            # Frontend-Orchestrator starten (zeigt alle Ergebnisse sequenziell an)
+            logger.debug(f"🚀 Starte Frontend-Orchestrator mit snapshot keys: {list(self.snapshot.keys())}")
+            logger.debug(f"🚀 system_memory keys: {list(self.snapshot.get('system_memory', {}).keys())}")
             self.orch_front.update_all(
-                snapshot=self.snapshot, lastkombis=self.lastkombis_renew)
+                snapshot=self.snapshot,
+                lastkombis=lastkombis
+            )
 
+            # FEEBB-Interface aktualisieren
             self.feebb.close_schnittkraftfenster()
             self.feebb.update_maxwerte()
 
@@ -965,6 +976,31 @@ class Eingabemaske:
             "I_y": Iy, "W_y": Wy,
             "materialgruppe": materialgruppe, "typ": typ,
             "festigkeitsklasse": festigkeitsklasse, "E": E
+        }
+
+    def get_gebrauchstauglichkeit_dict(self) -> dict:
+        logger.debug("Gebrauchstauglichkeit Dictionary aktualisiert 📚")
+        """Liest Gebrauchstauglichkeitsdaten."""
+        situation = self.situation_var.get()
+        w_c = float(self.w_c_überhoehung.get())
+        if situation == "Allgemein":
+            w_inst_grenz = self.w_inst_grenz_allgemein
+            w_fin_grenz = self.w_fin_grenz_allgemein
+            w_net_fin_grenz = self.w_net_fin_grenz_allgemein
+        elif situation == "Überhöhte, Untergeordnete Bauteile":
+            w_inst_grenz = self.w_inst_grenz_ueberhoeht
+            w_fin_grenz = self.w_fin_grenz_ueberhoeht
+            w_net_fin_grenz = self.w_net_fin_grenz_ueberhoeht
+        else:
+            w_inst_grenz = float(self.w_inst_grenz_eigen.get())
+            w_fin_grenz = float(self.w_fin_grenz_eigen.get())
+            w_net_fin_grenz = float(self.w_net_fin_grenz_eigen.get())
+        return {
+            "situation": situation,
+            "w_c": w_c,
+            "w_inst_grenz": w_inst_grenz,
+            "w_fin_grenz": w_fin_grenz,
+            "w_net_fin_grenz": w_net_fin_grenz
         }
 
     def on_querschnitt_auswahl(self, event=None):

@@ -2,7 +2,6 @@ import tkinter as tk
 from tkinter import ttk
 import logging
 import threading
-import queue
 from PIL import ImageTk
 from backend.calculations.lastenkombination import MethodeLastkombi
 
@@ -15,7 +14,6 @@ class LastkombiAnzeiger:
         self.parent = parent_frame
         self.eingabemaske = eingabemaske
         self.db = db
-        self.image_queue = queue.Queue()
         self.kombi_berechnung = MethodeLastkombi(self.eingabemaske, self.db)
         self.tk_images = []  # Wichtig: Referenzen auf Bilder halten
 
@@ -32,9 +30,6 @@ class LastkombiAnzeiger:
         self.latex_frame_bemessungslast = ttk.Frame(self.frame_ed)
         self.latex_frame_bemessungslast.pack(fill="both", expand=True)
 
-        # Starte den Queue-Verarbeitungsprozess
-        self.process_queue()
-
     def update(self, latex_kombis: dict, callback=None):
         """Startet die Bilderzeugung in einem Hintergrund-Thread."""
         thread = threading.Thread(
@@ -43,7 +38,7 @@ class LastkombiAnzeiger:
         thread.start()
 
     def _run_update_in_thread(self, latex_kombis, callback):
-        """Rendert LaTeX zu Bildern im Hintergrund und legt sie in die Queue."""
+        """Rendert LaTeX zu Bildern im Hintergrund."""
         try:
             bilder = []
             massgebende_kombi = next(
@@ -53,40 +48,23 @@ class LastkombiAnzeiger:
             ) == 1 and massgebende_kombi else list(latex_kombis.items())
 
             for _, kombi in kombiliste:
-                img = self.kombi_berechnung.render_latex_to_image(
-                    kombi["latex"])
+                img = self.render_latex_to_image(kombi["latex"])
                 if img:
                     bilder.append(("kombi", img))
 
             if massgebende_kombi:
-                img_ed = self.kombi_berechnung.render_latex_to_image(
+                img_ed = self.render_latex_to_image(
                     massgebende_kombi[1]["latex_ed"])
                 if img_ed:
                     bilder.append(("ed", img_ed))
 
-            self.image_queue.put(bilder)
+            self.root.after(0, lambda: self._show_images(bilder, callback))
         except Exception as e:
             logger.error(
                 f"Fehler bei Bilderzeugung für Lastkombis: {e}", exc_info=True)
-            self.image_queue.put(e)
-        finally:
-            if callback:
-                self.root.after(0, callback)
+            self.root.after(0, lambda err=e: self.zeige_fehler(err))
 
-    def process_queue(self):
-        """Verarbeitet die Bild-Queue und aktualisiert die Anzeige im Haupt-Thread."""
-        try:
-            data = self.image_queue.get_nowait()
-            if isinstance(data, Exception):
-                self.zeige_fehler(data)
-            else:
-                self.zeige_bilder(data)
-        except queue.Empty:
-            pass
-        finally:
-            self.root.after(100, self.process_queue)
-
-    def zeige_bilder(self, bilder):
+    def _show_images(self, bilder, callback):
         """Aktualisiert die Bild-Labels im Haupt-Thread."""
         self._clear_frames()
         self.tk_images.clear()
@@ -99,6 +77,9 @@ class LastkombiAnzeiger:
             label.image = tk_bild
             label.pack(anchor="w", pady=2)
 
+        if callback:
+            callback()
+
     def zeige_fehler(self, e):
         self._clear_frames()
         label = ttk.Label(self.latex_frame_lastkombination,
@@ -110,3 +91,32 @@ class LastkombiAnzeiger:
             widget.destroy()
         for widget in self.latex_frame_bemessungslast.winfo_children():
             widget.destroy()
+
+    def render_latex_to_image(self, latex_str):
+        """Rendert LaTeX-String zu PIL-Image (Frontend-Methode)."""
+        try:
+            # Matplotlib nur im Haupt-Thread importieren
+            import matplotlib
+            matplotlib.use('Agg')  # Thread-sicherer Backend
+            import matplotlib.pyplot as plt
+            from PIL import Image
+            from io import BytesIO
+
+            fig, ax = plt.subplots(figsize=(4, 0.05), dpi=200)
+            fig.patch.set_visible(False)
+            ax.axis("off")
+
+            ax.text(0.01, 0.5, latex_str,
+                    fontsize=5, va="center", ha="left")
+
+            buf = BytesIO()
+            plt.savefig(buf, format="png", bbox_inches="tight",
+                        pad_inches=0.05, transparent=True)
+            plt.close(fig)
+
+            buf.seek(0)
+            return Image.open(buf)
+
+        except Exception as e:
+            logger.error(f"Fehler beim LaTeX-Rendering: {e}")
+            return None

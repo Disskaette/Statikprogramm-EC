@@ -1,6 +1,6 @@
 from backend.service.memory_service import save_snapshot
 from backend.service.validation_service import validate_input
-from backend.service.calculation_service import add_load_cases, add_section_forces
+from backend.service.calculation_service import add_load_cases, add_section_forces, add_gzg_load_combinations, add_ec5_verification
 import json
 import hashlib
 import threading
@@ -51,18 +51,36 @@ class OrchestratorService:
                 kombi_result = add_load_cases(snapshot)
                 snapshot['Lastfallkombinationen'] = kombi_result['Lastfallkombinationen']
 
+                # GZG-Lastkombinationen für Durchbiegungsnachweise
+                gzg_result = add_gzg_load_combinations(snapshot)
+                snapshot['GZG_Lastfallkombinationen'] = gzg_result['GZG_Lastfallkombinationen']
+
                 feebb_result = add_section_forces(snapshot)
                 snapshot['Schnittgroessen'] = feebb_result['Schnittgroessen']
-                # querschnitt_result = add_cross_sectional_calculation(snapshot)
+
+                ec5_result = add_ec5_verification(snapshot)
+                snapshot['EC5_Nachweise'] = ec5_result
 
                 result = {
                     'Lastfallkombinationen': kombi_result['Lastfallkombinationen'],
+                    'GZG_Lastfallkombinationen': gzg_result['GZG_Lastfallkombinationen'],
                     'Schnittgroessen': feebb_result['Schnittgroessen'],
-                    # 'Querschnitt_Formeln': querschnitt_result['Querschnitt_Formeln']
+                    'EC5_Nachweise': ec5_result
                 }
+                # Debug-Ausgabe vor Callback
+                print(
+                    f"🚀 Orchestrator: Rufe Callback auf mit result keys: {list(result.keys())}")
+                print(
+                    f"🚀 EC5_Nachweise keys: {list(result['EC5_Nachweise'].keys())}")
                 # Beide Argumente an den Callback übergeben
                 callback(result=result, errors=None)
+                print(f"✅ Orchestrator: Callback erfolgreich aufgerufen")
             except Exception as e:
+                # Debug-Ausgabe für Exception
+                print(f"❌ Orchestrator Exception: {e}")
+                print(f"❌ Exception Type: {type(e).__name__}")
+                import traceback
+                print(f"❌ Traceback: {traceback.format_exc()}")
                 # Beide Argumente an den Callback übergeben
                 callback(result=None, errors=[str(e)])
             finally:
