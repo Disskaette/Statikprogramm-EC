@@ -90,26 +90,21 @@ class FrontendOrchestrator:
             f"✅ Phase 2 abgeschlossen - starte Phase 3: EC5-Nachweise (#{update_id})")
         self.current_phase = "nachweise"
 
-        # Phase 3: EC5-Nachweise aus system_memory anzeigen
+        # Phase 3: EC5-Nachweise direkt aus Snapshot anzeigen
         try:
-            # EC5-Nachweise aus dem system_memory des Snapshots extrahieren
-            system_memory = snapshot.get("system_memory", {})
-            ec5_result = system_memory.get("EC5_Nachweise", {})
-            
-            # Debug-Ausgaben
-            logger.debug(f"Frontend Debug: system_memory keys = {list(system_memory.keys())}")
-            logger.debug(f"Frontend Debug: EC5_Nachweise = {ec5_result}")
-            
+            # EC5-Nachweise direkt aus dem Snapshot extrahieren (ohne system_memory)
+            ec5_result = snapshot.get("EC5_Nachweise", {})
+
             # ec5_result enthält bereits die Nachweise direkt (nicht in einem "nachweise" Feld)
             nachweise_data = ec5_result
-            logger.debug(f"Frontend Debug: nachweise_data = {nachweise_data}")
 
             if not nachweise_data:
                 logger.warning(
-                    f"⚠️ Keine EC5-Nachweise im system_memory gefunden (#{update_id})")
-                logger.warning(f"Verfügbare system_memory keys: {list(system_memory.keys())}")
+                    f"⚠️ Keine EC5-Nachweise im Snapshot gefunden (#{update_id})")
+                logger.warning(
+                    f"Verfügbare Snapshot keys: {list(snapshot.keys())}")
                 logger.warning(f"EC5_Nachweise Inhalt: {ec5_result}")
-                # Nicht als Fehler werten
+                # Nicht als Fehler werten - Backend-Nachweise können optional sein
                 self._finish_update(update_id, success=True)
                 return
 

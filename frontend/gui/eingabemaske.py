@@ -69,6 +69,9 @@ class Eingabemaske:
         self.anzeige_lastkombis = None
         self.radio_lastkombi_1 = None
         self.radio_lastkombi_2 = None
+        self.eigengewicht_label = None
+        self.eigengewicht_active = None
+        self.eigengewicht_checkbutton = None
         # Schnittgrößen
         self.myd_entry = None
         self.vzd_entry = None
@@ -453,12 +456,25 @@ class Eingabemaske:
         self.nkl_dropdown.grid(row=row, column=2, pady=(10, 0), sticky="w")
         self.nkl_dropdown.bind("<<ComboboxSelected>>",
                                lambda e: self.on_any_change())
+        if self.eigengewicht_label is not None:
+            self.eigengewicht_label.destroy()
+        if self.eigengewicht_checkbutton is not None:
+            self.eigengewicht_checkbutton.destroy()
+
+        self.eigengewicht_label = ttk.Label(
+            self.lasten_frame, text="Eigengewicht aktiv:")
+        self.eigengewicht_label.grid(row=row+1, column=1, sticky="")
+        self.eigengewicht_active = tk.BooleanVar(value=True)
+        self.eigengewicht_checkbutton = ttk.Checkbutton(self.lasten_frame, variable=self.eigengewicht_active,
+                                                        command=self.on_any_change)
+        self.eigengewicht_checkbutton.grid(row=row+1, column=2, sticky="")
+
         self.radio_lastkombi_1 = ttk.Radiobutton(self.lasten_frame, text="Maßgebender Lastfall", variable=self.anzeige_lastkombis, value=1,
-                                                 command=lambda: self.kombi_anzeiger.update(self.lastkombis_renew))
+                                                 command=lambda: self.kombi_anzeiger.update(self.lastkombis))
         self.radio_lastkombi_1.grid(
             row=row, column=4, sticky="w", pady=(0, 0))
         self.radio_lastkombi_2 = ttk.Radiobutton(self.lasten_frame, text="Alle Lastfälle", variable=self.anzeige_lastkombis, value=2,
-                                                 command=lambda: self.kombi_anzeiger.update(self.lastkombis_renew))
+                                                 command=lambda: self.kombi_anzeiger.update(self.lastkombis))
         self.radio_lastkombi_2.grid(
             row=row+1, column=4, sticky="w", pady=(0, 0))
 
@@ -510,12 +526,11 @@ class Eingabemaske:
             row=0, column=1, columnspan=2, sticky="w")
         qs_materialgruppe_combo_1.bind("<<ComboboxSelected>>",
                                        lambda e: (self.update_querschnitt_felder(), self.on_any_change()))
-
-        # # Materialgruppe 2
-        # ttk.Label(self.querschnitt_frame, text="Materialgruppe:").grid(
-        #     row=0, column=0, sticky="w")
-        # gruppen_2 = self.db.get_materialgruppen()
-        # self.materialgruppe_var_2 = tk.StringVar(value=gruppen_2[0])
+        # Materialgruppe 2
+        ttk.Label(self.querschnitt_frame, text="Materialgruppe:").grid(
+            row=0, column=3, sticky="w")
+        gruppen_2 = self.db.get_materialgruppen()
+        self.materialgruppe_var_2 = tk.StringVar(value=gruppen_2[0])
         # qs_materialgruppe_combo_2 = ttk.Combobox(self.querschnitt_frame, textvariable=self.materialgruppe_var_2,
         #                                          values=gruppen_2, width=13, state="readonly")
         # qs_materialgruppe_combo_2.grid(
@@ -533,6 +548,12 @@ class Eingabemaske:
         #     row=0, column=5, columnspan=2, sticky="w")
         # qs_materialgruppe_combo_3.bind("<<ComboboxSelected>>",
         #                                lambda e: self.update_querschnitt_felder(), self.update_querschnitt_memory())
+        self.b_1 = 200
+        self.b_2 = 200
+        self.b_3 = 200
+        self.h_1 = 300
+        self.h_2 = 300
+        self.h_3 = 300
         self.update_querschnitt_felder()
 
     def update_querschnitt_felder(self):
@@ -574,7 +595,7 @@ class Eingabemaske:
                                 self.on_querschnitt_auswahl)
             self.querschnitt_var_2.set(typen_2[0])
 
-            # Typauswahl 1
+            # Typauswahl 3
             ttk.Label(self.querschnitt_frame, text="Typ:").grid(
                 row=1, column=6, sticky="w")
             typen_3 = self.db.get_typen(materialgruppe_1)
@@ -659,7 +680,7 @@ class Eingabemaske:
             ttk.Label(self.querschnitt_frame, text="b [mm]:").grid(
                 row=4, column=1, sticky="w")
             self.b_entry_1 = ttk.Entry(self.querschnitt_frame, width=6)
-            self.b_entry_1.insert(0, "160")
+            self.b_entry_1.insert(0, self.b_1)
             self.b_entry_1.grid(row=4, column=2, padx=5, sticky="w")
             self.b_entry_1.bind("<KeyRelease>",
                                 self.on_any_change)
@@ -667,7 +688,7 @@ class Eingabemaske:
             ttk.Label(self.querschnitt_frame, text="h [mm]:").grid(
                 row=5, column=1, sticky="w")
             self.h_entry_1 = ttk.Entry(self.querschnitt_frame, width=6)
-            self.h_entry_1.insert(0, "300")
+            self.h_entry_1.insert(0, self.h_1)
             self.h_entry_1.grid(row=5, column=2, padx=5, sticky="w")
             self.h_entry_1.bind("<KeyRelease>",
                                 self.on_any_change)
@@ -676,7 +697,7 @@ class Eingabemaske:
             ttk.Label(self.querschnitt_frame, text="b [mm]:").grid(
                 row=4, column=4, sticky="w")
             self.b_entry_2 = ttk.Entry(self.querschnitt_frame, width=6)
-            self.b_entry_2.insert(0, "160")
+            self.b_entry_2.insert(0, self.b_2)
             self.b_entry_2.grid(row=4, column=5, padx=5, sticky="w")
             self.b_entry_2.bind("<KeyRelease>",
                                 self.on_any_change)
@@ -684,7 +705,7 @@ class Eingabemaske:
             ttk.Label(self.querschnitt_frame, text="h [mm]:").grid(
                 row=5, column=4, sticky="w")
             self.h_entry_2 = ttk.Entry(self.querschnitt_frame, width=6)
-            self.h_entry_2.insert(0, "400")
+            self.h_entry_2.insert(0, self.h_2)
             self.h_entry_2.grid(row=5, column=5, padx=5, sticky="w")
             self.h_entry_2.bind("<KeyRelease>",
                                 self.on_any_change)
@@ -693,7 +714,7 @@ class Eingabemaske:
             ttk.Label(self.querschnitt_frame, text="b [mm]:").grid(
                 row=4, column=7, sticky="w")
             self.b_entry_3 = ttk.Entry(self.querschnitt_frame, width=6)
-            self.b_entry_3.insert(0, "160")
+            self.b_entry_3.insert(0, self.b_3)
             self.b_entry_3.grid(row=4, column=8, padx=5, sticky="w")
             self.b_entry_3.bind("<KeyRelease>",
                                 self.on_any_change)
@@ -701,12 +722,20 @@ class Eingabemaske:
             ttk.Label(self.querschnitt_frame, text="h [mm]:").grid(
                 row=5, column=7, sticky="w")
             self.h_entry_3 = ttk.Entry(self.querschnitt_frame, width=6)
-            self.h_entry_3.insert(0, "400")
+            self.h_entry_3.insert(0, self.h_3)
             self.h_entry_3.grid(row=5, column=8, padx=5, sticky="w")
             self.h_entry_3.bind("<KeyRelease>",
                                 self.on_any_change)
 
             self.on_any_change()
+
+    def _on_dimension_change(self, event):
+        self.b_1 = self.b_entry_1.get()
+        self.h_1 = self.h_entry_1.get()
+        self.b_2 = self.b_entry_2.get()
+        self.h_2 = self.h_entry_2.get()
+        self.b_3 = self.b_entry_3.get()
+        self.h_3 = self.h_entry_3.get()
 
     def update_festigkeitsklasse_dropdown(self):
         for i in range(1, 4):
@@ -740,7 +769,14 @@ class Eingabemaske:
                              self.update_gebrauchstauglichkeit_eingabe)
         situation_combo.bind("<<ComboboxSelected>>",
                              self.on_any_change, add="+")
+        self.w_c_überhoehung_wert = "0,00"
         self.update_gebrauchstauglichkeit_eingabe()
+
+    def _on_w_c_change(self, event):
+        # aktuellen Text aus dem Entry holen
+        self.w_c_überhoehung_wert = self.w_c_überhoehung.get()
+        # danach deine allgemeine Änderungs-Logik aufrufen
+        self.on_any_change(event)
 
     def update_gebrauchstauglichkeit_eingabe(self, event=None):
         logger.debug("🏗️ Gebrauchstauglichkeitsfenster wird aktualisiert")
@@ -763,11 +799,12 @@ class Eingabemaske:
                 row=2, column=0, sticky="e", pady=2)
             self.w_c_überhoehung = ttk.Entry(
                 self.gebrauchstauglichkeit_frame, width=6)
-            self.w_c_überhoehung.insert(0, "0.00")
+            self.w_c_überhoehung.insert(0, self.w_c_überhoehung_wert)
             self.w_c_überhoehung.grid(row=2, column=1, sticky="w", pady=2)
-            self.w_c_überhoehung.bind("<KeyRelease>",
+            self.w_c_überhoehung.bind("<KeyRelease>", self._on_w_c_change,
                                       self.on_any_change)
 
+            self.on_any_change()
             # Ausgabe Grenzwerte
             ttk.Label(self.gebrauchstauglichkeit_frame, text="w_inst:", width=6).grid(
                 row=3, column=0, sticky="w")
@@ -795,10 +832,10 @@ class Eingabemaske:
                 row=2, column=0, sticky="e", pady=2)
             self.w_c_überhoehung = ttk.Entry(
                 self.gebrauchstauglichkeit_frame, width=6)
-            self.w_c_überhoehung.insert(0, "0.00")
+            self.w_c_überhoehung.insert(0, self.w_c_überhoehung_wert)
             self.w_c_überhoehung.grid(row=2, column=1, sticky="w", pady=2)
             self.w_c_überhoehung.bind("<KeyRelease>",
-                                      self.on_any_change)
+                                      self._on_w_c_change, self.on_any_change)
 
             # Ausgabe Grenzwerte
             ttk.Label(self.gebrauchstauglichkeit_frame, text="w_inst:", width=12).grid(
@@ -815,17 +852,17 @@ class Eingabemaske:
                 row=5, column=0, sticky="w")
             ttk.Label(self.gebrauchstauglichkeit_frame, text=f"L / {self.w_net_fin_grenz_ueberhoeht}", width=6).grid(
                 row=5, column=1, sticky="w")
-
+            self.on_any_change()
         elif self.situation_var.get() == "Eigene Werte":
             # Überhöhungseingabe
             ttk.Label(self.gebrauchstauglichkeit_frame, text="w_c [mm]:", width=12).grid(
                 row=2, column=0, sticky="w")
             self.w_c_überhoehung = ttk.Entry(
                 self.gebrauchstauglichkeit_frame, width=6)
-            self.w_c_überhoehung.insert(0, "0.00")
+            self.w_c_überhoehung.insert(0, self.w_c_überhoehung_wert)
             self.w_c_überhoehung.grid(row=2, column=1, sticky="w")
             self.w_c_überhoehung.bind("<KeyRelease>",
-                                      self.on_any_change)
+                                      self._on_w_c_change, self.on_any_change)
 
             # Ausgabe Grenzwerte
             ttk.Label(self.gebrauchstauglichkeit_frame, text="w_inst       -> L / :", width=12).grid(
@@ -855,6 +892,7 @@ class Eingabemaske:
                 row=5, column=1, sticky="w")
             self.w_net_fin_grenz_eigen.bind("<KeyRelease>",
                                             self.on_any_change)
+            self.on_any_change()
 
     def on_any_change(self, event=None):
         # Debounce-Logik: Bricht den vorherigen Timer ab und startet einen neuen.
@@ -870,20 +908,26 @@ class Eingabemaske:
                     self.sprungmass_entry.get().replace(",", "."))
             except ValueError:
                 self.sprungmass = None
-            snapshot = {
+
+            # Eingabe-Snapshot (nur Eingabedaten, ohne Backend-Ergebnisse)
+            input_snapshot = {
                 "sprungmass": self.sprungmass,
                 "lasten":    self.get_lasten_list(),
                 "spannweiten": self.get_spannweiten_dict(),
                 "querschnitt": self.get_querschnitt_dict(),
                 "gebrauchstauglichkeit": self.get_gebrauchstauglichkeit_dict()
             }
-            self.snapshot = snapshot
-            self.orch.process_snapshot(snapshot, self._on_service_done)
-            # print(snapshot)
+            logger.info(f"Input Snapshot: {input_snapshot}")
+            # Temporärer Snapshot für Backend-Verarbeitung
+            # Der finale Snapshot wird erst in _on_service_done erstellt
+            # Zwischenspeichern der Eingabedaten für spätere Verwendung
+            self._current_input_data = input_snapshot
+            self.orch.process_snapshot(input_snapshot, self._on_service_done)
 
     def _on_service_done(self, result, errors):
         """Callback, der nach Abschluss des OrchestratorService aufgerufen wird."""
-        def handle():
+        # Direkte Verarbeitung im Haupt-Thread, um Scope-Probleme zu vermeiden
+        def handle_in_main_thread():
             if errors:
                 self.show_error_messages(errors)
                 return
@@ -893,23 +937,51 @@ class Eingabemaske:
                     "Keine Ergebnisse vom Backend-Orchestrator erhalten")
                 return
 
-            # System Memory für Frontend-Orchestrator vorbereiten
-            self.snapshot['system_memory'] = {
-                'Lastkombinationen': result.get('Lastfallkombinationen', {}),
-                'GZG_Lastkombinationen': result.get('GZG_Lastfallkombinationen', {}),
+            # Debug: Was kommt vom Backend?
+            logger.debug(
+                f"Backend result keys: {list(result.keys()) if result else 'None'}")
+            if 'Schnittgroessen' in result:
+                logger.debug(
+                    f"Schnittgroessen keys: {list(result['Schnittgroessen'].keys())}")
+
+            # Finaler Snapshot mit Eingabedaten + Backend-Ergebnissen (direkte Keys, ohne system_memory)
+            self.result = result
+
+            # Eingabedaten neu sammeln
+            try:
+                sprungmass = float(
+                    self.sprungmass_entry.get().replace(",", "."))
+            except (ValueError, AttributeError):
+                sprungmass = None
+
+            # Finaler Snapshot: Eingabedaten + Backend-Ergebnisse
+            self.snapshot = {
+                # Eingabedaten
+                "sprungmass": sprungmass,
+                "lasten": self.get_lasten_list(),
+                "spannweiten": self.get_spannweiten_dict(),
+                "querschnitt": self.get_querschnitt_dict(),
+                "gebrauchstauglichkeit": self.get_gebrauchstauglichkeit_dict(),
+                # Backend-Ergebnisse (direkt)
+                'Lastfallkombinationen': result.get('Lastfallkombinationen', {}),
+                'GZG_Lastfallkombinationen': result.get('GZG_Lastfallkombinationen', {}),
                 'Schnittgroessen': result.get('Schnittgroessen', {}),
                 'EC5_Nachweise': result.get('EC5_Nachweise', {})
             }
 
+            # Finaler Snapshot ist jetzt komplett und kann dauerhaft referenziert werden
+            print(
+                f"✅ Finaler Snapshot erstellt mit {len(self.snapshot)} Keys: {list(self.snapshot.keys())}")
+
             # Lastkombinationen für Anzeige extrahieren
-            lastkombis = result.get('Lastfallkombinationen', {})
+            self.lastkombis = self.result.get('Lastfallkombinationen', {})
 
             # Frontend-Orchestrator starten (zeigt alle Ergebnisse sequenziell an)
-            logger.debug(f"🚀 Starte Frontend-Orchestrator mit snapshot keys: {list(self.snapshot.keys())}")
-            logger.debug(f"🚀 system_memory keys: {list(self.snapshot.get('system_memory', {}).keys())}")
+            logger.debug(
+                f"🚀 Starte Frontend-Orchestrator mit finalen snapshot keys: {list(self.snapshot.keys())}")
             self.orch_front.update_all(
                 snapshot=self.snapshot,
-                lastkombis=lastkombis
+                lastkombis=self.lastkombis
             )
 
             # FEEBB-Interface aktualisieren
@@ -917,7 +989,7 @@ class Eingabemaske:
             self.feebb.update_maxwerte()
 
         # Führt den handle-Code im Haupt-Thread aus, um Thread-Konflikte zu vermeiden
-        self.eingabe_frame.after(0, handle)
+        self.eingabe_frame.after(0, handle_in_main_thread)
 
     def show_error_messages(self, errors: list):
         if self.gui_fertig_geladen:
@@ -948,11 +1020,13 @@ class Eingabemaske:
                 kat = row["detail_combo"].get()
                 komm = row["kommentar"].get()
                 nkl = int(self.nkl_var.get().strip()[-1])
+                eigengewicht = self.eigengewicht_active.get()
                 # optional kmod aus DB holen…
                 lasten.append({
                     "lastfall": lf, "wert": wert,
                     "kategorie": kat, "kommentar": komm,
-                    "nkl": nkl
+                    "nkl": nkl,
+                    "eigengewicht": eigengewicht
                 })
             except:
                 pass
@@ -982,7 +1056,7 @@ class Eingabemaske:
         logger.debug("Gebrauchstauglichkeit Dictionary aktualisiert 📚")
         """Liest Gebrauchstauglichkeitsdaten."""
         situation = self.situation_var.get()
-        w_c = float(self.w_c_überhoehung.get())
+        w_c = float(self.w_c_überhoehung_wert.replace(",", "."))
         if situation == "Allgemein":
             w_inst_grenz = self.w_inst_grenz_allgemein
             w_fin_grenz = self.w_fin_grenz_allgemein

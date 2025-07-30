@@ -47,14 +47,26 @@ class FeebbAnzeiger:
         self.eingabemaske = eingabemaske
         self.schnittkraftfenster = None
         self.schnittkraft_canvas = None
+        self._plot_retry_count = 0  # Zähler für Retry-Versuche
 
     def update_maxwerte(self):
-        moment = self.eingabemaske.result['Schnittgroessen']['GZT']['max']['moment']
-        querkraft = self.eingabemaske.result['Schnittgroessen']['GZT']['max']['querkraft']
+        # Direkter Zugriff auf Schnittgrößen-Daten (ohne system_memory)
+        schnittgroessen = self.eingabemaske.snapshot.get("Schnittgroessen", {})
+        gzt_data = schnittgroessen.get("GZT", {})
+        max_data = gzt_data.get("max", {})
+
+        if not max_data:
+            print("Keine Maximalwerte verfügbar. Berechnung noch nicht abgeschlossen.")
+            return
+
+        print("✅ Maximalwerte erfolgreich gefunden!")
+
+        moment = max_data.get('moment', 0)
+        querkraft = max_data.get('querkraft', 0)
         self.eingabemaske.root.after(0, lambda: self.eingabemaske.max_moment_kalt.config(
-            text=f"{moment/1_000_000:.0f}"))
+            text=f"{moment/1_000_000:.1f}"))
         self.eingabemaske.root.after(0, lambda: self.eingabemaske.max_querkraft_kalt.config(
-            text=f"{querkraft/1000:.0f}"))
+            text=f"{querkraft/1000:.1f}"))
 
     def toggle_schnittkraftfenster(self):
         if self.eingabemaske.schnittgroeßen_anzeige_button.get():
@@ -76,12 +88,39 @@ class FeebbAnzeiger:
             return
 
     def plot_schnittkraefte(self):
-        schnitt = self.eingabemaske.result["Schnittgroessen"]["GZT"]
-        m = schnitt["moment"]
-        q = schnitt["querkraft"]
+        # Direkter Zugriff auf Schnittgrößen-Daten (ohne system_memory)
+        schnittgroessen = self.eingabemaske.snapshot.get("Schnittgroessen", {})
+        schnitt = schnittgroessen.get("GZT")
+
+        if not schnitt:
+            self._plot_retry_count += 1
+            if self._plot_retry_count > 10:  # Maximal 10 Versuche (5 Sekunden)
+                print("❌ Timeout: Keine GZT-Schnittgrößen nach 10 Versuchen verfügbar.")
+                print(
+                    "   Bitte warten Sie, bis die Berechnung abgeschlossen ist, und versuchen Sie erneut.")
+                self._plot_retry_count = 0  # Reset für nächsten Versuch
+                return
+
+            print(
+                f"Keine GZT-Schnittgrößen verfügbar. Warte auf Backend-Berechnung... (Versuch {self._plot_retry_count}/10)")
+            # Automatisches Retry nach 500ms
+            self.eingabemaske.root.after(500, self.plot_schnittkraefte)
+            return
+
+        # Erfolg: Reset retry counter
+        self._plot_retry_count = 0
+        print("✅ GZT-Schnittgrößen erfolgreich gefunden!")
+
+        m = schnitt.get("moment")
+        q = schnitt.get("querkraft")
         w = schnitt.get("durchbiegung", None)
 
+        if not m or not q:
+            print("Unvollständige Schnittgrößen-Daten.")
+            return
+
         # Spannweiten und Feldgrenzen bestimmen
+
         spannweiten_dict = self.eingabemaske.snapshot.get("spannweiten", {})
         spannweiten_keys = list(spannweiten_dict.keys())
         spannweiten = list(spannweiten_dict.values())

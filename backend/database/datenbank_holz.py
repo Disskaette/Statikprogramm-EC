@@ -158,20 +158,19 @@ class datenbank_holz_class:
             if klasse not in self.festigkeitsklasse_reihenfolge[key_klass]:
                 self.festigkeitsklasse_reihenfolge[key_klass].append(klasse)
 
-    def get_bemessungsdaten(self, gruppe, typ, klasse, nkl, kmod_typ):
+    def get_bemessungsdaten(self, gruppe, typ, klasse, nkl):
         mat = self.get_material(gruppe, typ, klasse)
         kmod_entry = self.get_kmod(typ, nkl)
 
         if not mat or not kmod_entry:
-            return {"fmyk": None, "fvk": None, "E": None, "roh": None, "gamma_m": None, "kmod": None, "kdef": None}
+            return {"fmyk": None, "fvk": None, "E": None, "roh": None, "gamma_m": None, "kdef": None}
 
         return {
             "fmyk": mat.fmyk,
             "fvk": mat.fvk,
             "E": mat.emodul,
-            "roh": mat.roh,
+            "roh_mean": mat.roh_mean,  # Rohdichte in kg/m^3
             "gamma_m": mat.gamma_m,
-            "kmod": kmod_entry.kmod_typ.get(kmod_typ, None),
             "kdef": kmod_entry.kdef
         }
 

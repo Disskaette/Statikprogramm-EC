@@ -68,10 +68,10 @@ class OrchestratorService:
                     'EC5_Nachweise': ec5_result
                 }
                 # Debug-Ausgabe vor Callback
-                print(
-                    f"🚀 Orchestrator: Rufe Callback auf mit result keys: {list(result.keys())}")
-                print(
-                    f"🚀 EC5_Nachweise keys: {list(result['EC5_Nachweise'].keys())}")
+                # print(
+                #     f"🚀 Orchestrator: Rufe Callback auf mit result keys: {list(result.keys())}")
+                # print(
+                #     f"🚀 EC5_Nachweise keys: {list(result['EC5_Nachweise'].keys())}")
                 # Beide Argumente an den Callback übergeben
                 callback(result=result, errors=None)
                 print(f"✅ Orchestrator: Callback erfolgreich aufgerufen")

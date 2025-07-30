@@ -47,6 +47,10 @@ class MethodeLastkombi:
         lasten = self.snapshot.get("lasten", [])
         e = self.snapshot.get("sprungmass")
         typ = self.snapshot.get("querschnitt", {}).get("typ")
+        breite = self.snapshot.get("querschnitt", {}).get("breite_qs")
+        hoehe = self.snapshot.get("querschnitt", {}).get("hoehe_qs")
+        gruppe = self.snapshot.get("querschnitt", {}).get("materialgruppe")
+        klasse = self.snapshot.get("querschnitt", {}).get("festigkeitsklasse")
 
         if not lasten or e is None:
             logger.error(
@@ -59,6 +63,14 @@ class MethodeLastkombi:
 
         for last in lasten:
             nkl = last.get("nkl")
+            breite = float(breite)/1000
+            hoehe = float(hoehe)/1000
+
+            bemessungsdaten = self.db.get_bemessungsdaten(
+                gruppe, typ, klasse, nkl)
+            roh_mean = bemessungsdaten.get("roh_mean")
+            eigenlast = (roh_mean * breite * hoehe)/1000
+
             lastfall = last["lastfall"].lower()
             wert = float(last["wert"]) * e
             kategorie = last["kategorie"]
@@ -67,7 +79,10 @@ class MethodeLastkombi:
             kmod = kmod_entry.kmod_typ.get(kmod_typ, None)
 
             if lastfall == "g":
-                g_summe += wert
+                if last.get("eigengewicht") == True:
+                    g_summe += wert + eigenlast
+                else:
+                    g_summe += wert
                 kmod_g = kmod
                 last.update({
                     "wert_e": wert,
@@ -172,24 +187,3 @@ class MethodeLastkombi:
         kombis[name]["massgebend"] = True
         print(kombis)
         return {"Lastfallkombinationen": kombis}
-
-    def render_latex_to_image(self, latex_str):
-        import matplotlib
-        matplotlib.use("Agg")  # Setzt das Backend nur für diesen Importzweig
-        import matplotlib.pyplot as plt
-        from matplotlib.backends.backend_agg import FigureCanvasAgg as FigureCanvas
-
-        fig, ax = plt.subplots(figsize=(4, 0.05), dpi=200)
-        fig.patch.set_visible(False)
-        ax.axis("off")
-
-        ax.text(0.01, 0.5, latex_str,
-                fontsize=5, va="center", ha="left")
-
-        buf = BytesIO()
-        plt.savefig(buf, format="png", bbox_inches="tight",
-                    pad_inches=0.05, transparent=True)
-        plt.close(fig)
-
-        buf.seek(0)
-        return Image.open(buf)

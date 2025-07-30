@@ -45,29 +45,27 @@ class MethodeNachweisEC5:
         b = querschnitt.get("breite_qs", 0)  # Breite in mm
         h = querschnitt.get("hoehe_qs", 0)  # Höhe in mm
         typ = querschnitt.get("typ", "")
+        klasse = querschnitt.get("festigkeitsklasse", "")
+        nkl = querschnitt.get("nkl", 1)
+        gruppe = querschnitt.get("materialgruppe", "")
 
         # Spannweite (erste verfügbare Spannweite)
         l = 1000  # Fallback in mm
         if spannweiten:
-            l_m = next(iter(spannweiten.values()), 1.0)  # Erste Spannweite in m
+            # Erste Spannweite in m
+            l_m = next(iter(spannweiten.values()), 1.0)
             l = l_m * 1000  # Umrechnung m → mm
 
         # Materialwerte aus DB
-        try:
-            material_data = self.db.get_material_properties(typ)
-            fm_k = material_data.get("fm_k", 24)  # N/mm²
-            fv_k = material_data.get("fv_k", 2.5)  # N/mm²
-            E_mean = material_data.get("E_mean", 11000)  # N/mm²
-        except:
-            # Fallback-Werte falls DB-Zugriff fehlschlägt
-            fm_k = 24
-            fv_k = 2.5
-            E_mean = 11000
+        bemessungsdaten = self.db.get_bemessungsdaten(gruppe, typ, klasse, nkl)
+
+        fm_k = bemessungsdaten.get("fmyk")  # N/mm²
+        fv_k = bemessungsdaten.get("fvk")  # N/mm²
+        E_mean = bemessungsdaten.get("E")  # N/mm²
+        gamma_m = bemessungsdaten.get("gamma_m")  # Teilsicherheitsbeiwert
 
         # Kmod aus Lastkombination
         kmod = self._get_kmod_from_kombination()
-        gamma_m = 1.3  # Teilsicherheitsbeiwert für Holz
-
         # Bemessungswerte
         fm_d = kmod * fm_k / gamma_m
         fv_d = kmod * fv_k / gamma_m
@@ -113,23 +111,26 @@ class MethodeNachweisEC5:
         try:
             # Lastfallkombinationen direkt aus dem Snapshot lesen
             lastkombis = self.snapshot.get("Lastfallkombinationen", {})
-            
+
             if not lastkombis:
-                logger.warning("Keine Lastfallkombinationen im Snapshot gefunden")
+                logger.warning(
+                    "Keine Lastfallkombinationen im Snapshot gefunden")
                 return 0.9
 
             # Suche maßgebende Kombination
             for kombi_name, kombi_data in lastkombis.items():
                 if kombi_data.get("massgebend", False):
                     kmod_value = kombi_data.get("kmod", 0.9)
-                    logger.info(f"Maßgebende Kombination gefunden: {kombi_name}, kmod = {kmod_value}")
+                    logger.info(
+                        f"Maßgebende Kombination gefunden: {kombi_name}, kmod = {kmod_value}")
                     return kmod_value
 
             # Fallback: erste Kombination
             first_kombi_name = next(iter(lastkombis.keys()))
             first_kombi_data = lastkombis[first_kombi_name]
             kmod_value = first_kombi_data.get("kmod", 0.9)
-            logger.info(f"Fallback auf erste Kombination: {first_kombi_name}, kmod = {kmod_value}")
+            logger.info(
+                f"Fallback auf erste Kombination: {first_kombi_name}, kmod = {kmod_value}")
             return kmod_value
 
         except Exception as e:
@@ -143,7 +144,8 @@ class MethodeNachweisEC5:
             # Maßgebende GZG-Lastkombination aus Snapshot
             gzg_kombis = self.snapshot.get("GZG_Lastfallkombinationen", {})
             if not gzg_kombis:
-                logger.warning("Keine GZG-Lastkombinationen für Durchbiegungsberechnung gefunden")
+                logger.warning(
+                    "Keine GZG-Lastkombinationen für Durchbiegungsberechnung gefunden")
                 return {"delta_inst": 0, "delta_end": 0, "delta_netto": 0}
 
             # Maßgebende GZG-Kombination finden
@@ -155,7 +157,8 @@ class MethodeNachweisEC5:
 
             if not massgebende_gzg:
                 # Fallback: Höchste Last
-                massgebende_gzg = max(gzg_kombis.values(), key=lambda x: x.get("wert", 0))
+                massgebende_gzg = max(
+                    gzg_kombis.values(), key=lambda x: x.get("wert", 0))
 
             # Quasi-permanente Last und kdef
             qd_gzg = massgebende_gzg.get("wert", 0)  # kN/m
@@ -164,7 +167,7 @@ class MethodeNachweisEC5:
             # Querschnittswerte
             querschnitt = self.snapshot.get("querschnitt", {})
             I_y = querschnitt.get("I_y", 0) / 1e12  # mm⁴ → m⁴
-            
+
             if I_y <= 0:
                 logger.error("Ungültiges Flächenträgheitsmoment")
                 return {"delta_inst": 0, "delta_end": 0, "delta_netto": 0}
@@ -173,21 +176,25 @@ class MethodeNachweisEC5:
             logger.debug(f"Durchbiegung Debug: qd_gzg = {qd_gzg} kN/m")
             logger.debug(f"Durchbiegung Debug: l = {l} mm")
             logger.debug(f"Durchbiegung Debug: E_mean = {E_mean} N/mm²")
-            logger.debug(f"Durchbiegung Debug: I_y = {I_y} m⁴ (original: {querschnitt.get('I_y', 0)} mm⁴)")
+            logger.debug(
+                f"Durchbiegung Debug: I_y = {I_y} m⁴ (original: {querschnitt.get('I_y', 0)} mm⁴)")
             logger.debug(f"Durchbiegung Debug: kdef = {kdef}")
-            
+
             # EC5-Durchbiegungsberechnung für Gleichlast auf einfachem Balken
             # δinst = (5 * q * L⁴) / (384 * E * I)
-            delta_inst = (5 * qd_gzg * 1000 * (l/1000)**4) / (384 * E_mean * 1e6 * I_y) * 1000  # mm
-            
-            logger.debug(f"Durchbiegung Debug: delta_inst berechnet = {delta_inst} mm")
-            
+            delta_inst = (5 * qd_gzg * 1000 * (l/1000)**4) / \
+                (384 * E_mean * 1e6 * I_y) * 1000  # mm
+
+            logger.debug(
+                f"Durchbiegung Debug: delta_inst berechnet = {delta_inst} mm")
+
             # δend = kdef * δinst (Langzeitdurchbiegung)
             delta_end = kdef * delta_inst
-            
+
             # δnetto = δend - Δ₀ (Netto-Enddurchbiegung)
             # Δ₀ = Anfangsüberhöhung (aus Gebrauchstauglichkeit)
-            gebrauchstauglichkeit = self.snapshot.get("gebrauchstauglichkeit", {})
+            gebrauchstauglichkeit = self.snapshot.get(
+                "gebrauchstauglichkeit", {})
             delta_0 = gebrauchstauglichkeit.get("w_c", 0)  # Anfangsüberhöhung
             delta_netto = delta_end - delta_0
 
@@ -195,7 +202,8 @@ class MethodeNachweisEC5:
             logger.info(f"  - qd,GZG = {qd_gzg:.2f} kN/m, kdef = {kdef:.2f}")
             logger.info(f"  - δinst = {delta_inst:.2f} mm")
             logger.info(f"  - δend = {delta_end:.2f} mm")
-            logger.info(f"  - δnetto = {delta_netto:.2f} mm (Δ₀ = {delta_0:.2f} mm)")
+            logger.info(
+                f"  - δnetto = {delta_netto:.2f} mm (Δ₀ = {delta_0:.2f} mm)")
 
             return {
                 "delta_inst": delta_inst,
@@ -221,13 +229,13 @@ class MethodeNachweisEC5:
         # Ausnutzung
         eta = sigma_m_d / fm_d
         erfuellt = eta <= 1.0
-        
+
         # LaTeX-String direkt erstellen (analog zur Lastenkombination)
         latex_str = (f"$\\sigma_{{m,d}} = \\frac{{M_{{Ed}}}}{{W_y}} = "
-                    f"\\frac{{{max_med:.0f}}}{{{w_y:.0f}}} = {sigma_m_d:.2f} \\,\\text{{N/mm²}} "
-                    f"\\leq {fm_d:.2f} \\,\\text{{N/mm²}} \\quad "
-                    f"\\eta = {eta:.3f} {'\\checkmark' if erfuellt else '\\times'}$")
-        
+                     f"\\frac{{{max_med/1000000:.1f}\\cdot{{10^6}}}}{{{w_y:.0f}}} = {sigma_m_d:.2f} \\,\\text{{N/mm²}} "
+                     f"\\leq {fm_d:.2f} \\,\\text{{N/mm²}} \\quad "
+                     f"\\eta = {eta:.3f} {'\\checkmark' if erfuellt else '\\times'}$")
+
         return {
             "latex": latex_str,
             "erfuellt": erfuellt,
@@ -245,13 +253,13 @@ class MethodeNachweisEC5:
         # Ausnutzung
         eta = tau_d / fv_d
         erfuellt = eta <= 1.0
-        
+
         # LaTeX-String direkt erstellen (analog zur Lastenkombination)
         latex_str = (f"$\\tau_d = 1.5 \\cdot \\frac{{V_{{Ed}}}}{{b \\cdot h}} = "
-                    f"1.5 \\cdot \\frac{{{max_ved:.0f}}}{{{b} \\cdot {h}}} = {tau_d:.2f} \\,\\text{{N/mm²}} "
-                    f"\\leq {fv_d:.2f} \\,\\text{{N/mm²}} \\quad "
-                    f"\\eta = {eta:.3f} {'\\checkmark' if erfuellt else '\\times'}$")
-        
+                     f"1.5 \\cdot \\frac{{{max_ved/1000:.1f}\\cdot{{10^3}}}}{{{b:.0f} \\cdot {h:.0f}}} = {tau_d:.0f} \\,\\text{{N/mm²}} "
+                     f"\\leq {fv_d:.2f} \\,\\text{{N/mm²}} \\quad "
+                     f"\\eta = {eta:.3f} {'\\checkmark' if erfuellt else '\\times'}$")
+
         return {
             "latex": latex_str,
             "erfuellt": erfuellt,
@@ -260,26 +268,12 @@ class MethodeNachweisEC5:
             "fv_d": fv_d
         }
 
-    def _get_durchbiegungsgrenzwerte(self, eingabemaske, l):
+    def _get_durchbiegungsgrenzwerte(self, gebrauchstauglichkeit, l):
         """Extrahiert die Durchbiegungsgrenzwerte basierend auf der gewählten Situation"""
-        situation = eingabemaske.get("situation_var", "Allgemein")
 
-        if situation == "Allgemein":
-            # Vordefinierte Werte für allgemeine Bauteile
-            w_inst_grenz = 300
-            w_fin_grenz = 200
-            w_net_fin_grenz = 300
-        elif situation == "Überhöhte, Untergeordnete Bauteile":
-            # Vordefinierte Werte für überhöhte/untergeordnete Bauteile
-            w_inst_grenz = 200
-            w_fin_grenz = 150
-            w_net_fin_grenz = 250
-        else:  # "Eigene Werte"
-            # Benutzerdefinierte Werte aus den Entry-Feldern
-            w_inst_grenz = float(eingabemaske.get("w_inst_grenz_eigen", 300))
-            w_fin_grenz = float(eingabemaske.get("w_fin_grenz_eigen", 200))
-            w_net_fin_grenz = float(
-                eingabemaske.get("w_net_fin_grenz_eigen", 300))
+        w_inst_grenz = gebrauchstauglichkeit.get("w_inst_grenz")
+        w_fin_grenz = gebrauchstauglichkeit.get("w_fin_grenz")
+        w_net_fin_grenz = gebrauchstauglichkeit.get("w_net_fin_grenz")
 
         return {
             "w_inst": l / w_inst_grenz,
@@ -297,15 +291,15 @@ class MethodeNachweisEC5:
         # Ausnutzung
         eta = max_w / w_grenz
         erfuellt = eta <= 1.0
-        
+
         # Grenzfaktor berechnen
         grenz_faktor = l / w_grenz if w_grenz > 0 else 0
-        
+
         # LaTeX-String direkt erstellen (analog zur Lastenkombination)
         latex_str = (f"${symbol} = {max_w:.2f} \\,\\text{{mm}} \\leq "
-                    f"{symbol.replace(',max', '_{{grenz}}')} = \\frac{{L}}{{{grenz_faktor:.0f}}} = {w_grenz:.2f} \\,\\text{{mm}} \\quad "
-                    f"\\eta = {eta:.3f} {'\\checkmark' if erfuellt else '\\times'}$")
-        
+                     f"{symbol.replace(',max', '_{{grenz}}')} = \\frac{{L}}{{{grenz_faktor:.0f}}} = {w_grenz:.2f} \\,\\text{{mm}} \\quad "
+                     f"\\eta = {eta:.3f} {'\\checkmark' if erfuellt else '\\times'}$")
+
         return {
             "latex": latex_str,
             "erfuellt": erfuellt,
@@ -314,5 +308,3 @@ class MethodeNachweisEC5:
             "w_grenz": w_grenz,
             "bezeichnung": bezeichnung
         }
-
-
