@@ -1,0 +1,12 @@
+{
+  "position_nummer": "1.02",
+  "position_name": "HT 2 - Küche",
+  "created": "2025-10-23T16:48:53.001528",
+  "last_modified": "2025-10-23T16:48:53.001663",
+  "active_module": "durchlauftraeger",
+  "modules": {
+    "durchlauftraeger": null,
+    "brandschutz": null,
+    "auflager": null
+  }
+}

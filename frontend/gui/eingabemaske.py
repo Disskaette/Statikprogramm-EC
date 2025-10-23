@@ -49,6 +49,13 @@ class Eingabemaske:
         self.sprungmass = None
         self.max_felder = 5
         self.feldanzahl_var = None
+        self.kragarm_laenge_links = None
+        self.feld_1 = None
+        self.feld_2 = None
+        self.feld_3 = None
+        self.feld_4 = None
+        self.feld_5 = None
+        self.kragarm_laenge_rechts = None
         # self.material_typen = None
         # Kragarme
         self.kragarm_links = None
@@ -244,17 +251,21 @@ class Eingabemaske:
             value=False)  # Default: Schnell-Modus
         mode_frame = ttk.Frame(berechnungsmodus_frame)
         mode_frame.grid(row=0, column=0, sticky="w")
-        ttk.Radiobutton(mode_frame, text="⚡ Schnell (Vollast)",
+        ttk.Radiobutton(mode_frame, text="⚡ Volllast (schnell)",
                         variable=self.ec_modus_var, value=False,
                         command=self.on_any_change).pack(side="left", padx=5)
-        ttk.Radiobutton(mode_frame, text="🔬 EC-Muster (genau)",
+        ttk.Radiobutton(mode_frame, text="🔬 EC-Kombinatorik (genau)",
                         variable=self.ec_modus_var, value=True,
                         command=self.on_any_change).pack(side="left", padx=5)
 
         # Ladeindikator
+        self.loading_label_ph = ttk.Label(
+            berechnungsmodus_frame, text="", foreground="blue")
+        self.loading_label_ph.grid(
+            row=0, column=4, columnspan=2, pady=5, padx=30)
         self.loading_label = ttk.Label(
             berechnungsmodus_frame, text="", foreground="blue")
-        self.loading_label.grid(row=1, column=0, columnspan=2, pady=5)
+        self.loading_label.grid(row=0, column=6, columnspan=2, pady=5)
 
         # Sprungmaß
         ttk.Label(frame_system_eingabe, text="Sprungmaß e [m]:").grid(row=0,
@@ -306,6 +317,17 @@ class Eingabemaske:
         self.gui_fertig_geladen = True
 
     def update_spannweitenfelder(self):
+        # Aktuelle Werte speichern, bevor Widgets zerstört werden
+        temp_memory = {}
+        for eintrag in self.spannweiten_eingaben:
+            name = eintrag["name"]
+            entry_widget = eintrag["entry"]
+            try:
+                # Aktuellen Wert aus Entry-Feld auslesen
+                temp_memory[name] = entry_widget.get()
+            except:
+                pass
+
         for widget in self.spannweiten_frame.winfo_children():
             widget.destroy()
 
@@ -316,7 +338,9 @@ class Eingabemaske:
             ttk.Label(self.spannweiten_frame, text="Kragarm L [m]").grid(
                 row=0, column=col)
             entry_kragarm_l = ttk.Entry(self.spannweiten_frame, width=7)
-            entry_kragarm_l.insert(0, "5")
+            # Gespeicherten Wert wiederherstellen oder Default verwenden
+            default_value = temp_memory.get("kragarm_links", "5")
+            entry_kragarm_l.insert(0, default_value)
             entry_kragarm_l.grid(row=1, column=col)
             self.spannweiten_eingaben.append(
                 {"name": "kragarm_links", "entry": entry_kragarm_l})
@@ -326,7 +350,9 @@ class Eingabemaske:
             ttk.Label(self.spannweiten_frame,
                       text=f"Feld {i+1} [m]").grid(row=0, column=col)
             entry = ttk.Entry(self.spannweiten_frame, width=7)
-            entry.insert(0, "5")
+            # Gespeicherten Wert wiederherstellen oder Default verwenden
+            default_value = temp_memory.get(f"feld_{i+1}", "5")
+            entry.insert(0, default_value)
             entry.grid(row=1, column=col)
             self.spannweiten_eingaben.append(
                 {"name": f"feld_{i+1}", "entry": entry})
@@ -336,7 +362,9 @@ class Eingabemaske:
             ttk.Label(self.spannweiten_frame, text="Kragarm R [m]").grid(
                 row=0, column=col)
             entry_kragarm_r = ttk.Entry(self.spannweiten_frame, width=7)
-            entry_kragarm_r.insert(0, "5")
+            # Gespeicherten Wert wiederherstellen oder Default verwenden
+            default_value = temp_memory.get("kragarm_rechts", "5")
+            entry_kragarm_r.insert(0, default_value)
             entry_kragarm_r.grid(row=1, column=col)
             self.spannweiten_eingaben.append(
                 {"name": "kragarm_rechts", "entry": entry_kragarm_r})
@@ -1071,6 +1099,8 @@ class Eingabemaske:
 
             # FEEBB-Interface aktualisieren
             self.feebb.close_schnittkraftfenster()
+            # Button-Zustand zurücksetzen
+            self.schnittgroeßen_anzeige_button.set(False)
             self.feebb.update_maxwerte()
 
             # Ladeanimation stoppen

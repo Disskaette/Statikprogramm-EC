@@ -1,0 +1,28 @@
+{
+  "position_nummer": "1.01",
+  "position_name": "HT 1 - Wohnzimmer",
+  "created": "2025-10-23T16:48:53.001150",
+  "last_modified": "2025-10-23T16:48:53.003346",
+  "active_module": "durchlauftraeger",
+  "modules": {
+    "durchlauftraeger": {
+      "sprungmass": 1.2,
+      "lasten": [
+        {
+          "lastfall": "g",
+          "wert": 8.0,
+          "kategorie": "Eigengewicht"
+        }
+      ],
+      "spannweiten": {
+        "feld_1": 6.0
+      },
+      "querschnitt": {
+        "breite_qs": 240,
+        "hoehe_qs": 360
+      }
+    },
+    "brandschutz": null,
+    "auflager": null
+  }
+}

@@ -123,44 +123,75 @@ class SystemAnzeiger:
             traeger_ende = plot_data["traeger_ende"]
 
             fig, ax = plt.subplots(figsize=(8, 2))
-            if not segments:
-                # Leeren Plot zeichnen, wenn keine Daten vorhanden sind
-                ax.plot([0, 5], [1, 1], color='black', linewidth=2)
+            
+            # Normalisierung: Trägerlänge auf feste Darstellungslänge mappen
+            DISPLAY_LENGTH = 10.0  # Feste Darstellungslänge
+            traeger_laenge_real = traeger_ende - traeger_start
+            
+            if traeger_laenge_real > 0:
+                # Normalisierungsfaktor: real -> display
+                norm_factor = DISPLAY_LENGTH / traeger_laenge_real
+                
+                # Normalisiere alle Positionen
+                traeger_start_norm = 0.0
+                traeger_ende_norm = DISPLAY_LENGTH
+                auflager_pos_norm = [(x - traeger_start) * norm_factor for x in auflager_pos]
+                
+                # Normalisiere Segment-Positionen
+                segments_norm = []
+                for seg in segments:
+                    segments_norm.append({
+                        'label': seg['label'],
+                        'start': (seg['start'] - traeger_start) * norm_factor,
+                        'end': (seg['end'] - traeger_start) * norm_factor,
+                        'len': seg['len']  # Reale Länge für Beschriftung beibehalten
+                    })
             else:
-                ax.plot([traeger_start, traeger_ende], [
-                        1, 1], color='black', linewidth=2)
+                # Fallback bei leerem System
+                traeger_start_norm = 0.0
+                traeger_ende_norm = DISPLAY_LENGTH
+                auflager_pos_norm = []
+                segments_norm = []
+            
+            # Trägerlinie zeichnen (immer gleich lang)
+            ax.plot([traeger_start_norm, traeger_ende_norm], [1, 1], color='black', linewidth=2)
 
-            # Auflager zeichnen
-            for i, x in enumerate(auflager_pos):
+            # Feste Auflagergrößen (nicht skaliert)
+            dreieck_breite = 0.2
+            festlager_breite = 0.3
+            loslager_breite = 0.25
+            
+            # Auflager zeichnen (an normalisierten Positionen)
+            for i, x_norm in enumerate(auflager_pos_norm):
                 is_fixed = (i == 0 and not any(
                     seg['label'] == 'Kragarm links' for seg in segments))
 
                 # Dreieck (Spitze jetzt exakt auf dem Träger)
-                ax.plot([x, x-0.2, x+0.2, x], [1.0, 0.6, 0.6, 1.0],
+                ax.plot([x_norm, x_norm-dreieck_breite, x_norm+dreieck_breite, x_norm], [1.0, 0.6, 0.6, 1.0],
                         color='black', linewidth=1.5)
-                ax.text(x, 1.08, chr(65+i), ha='center',
+                ax.text(x_norm, 1.08, chr(65+i), ha='center',
                         va='bottom', fontsize=12)
 
                 if is_fixed:
-                    # Festlager: Längerer, dünnerer Strich
-                    ax.plot([x-0.25, x+0.25], [0.55, 0.55],
+                    # Festlager: Linie auf gleicher Höhe wie Dreieckbasis, länger
+                    ax.plot([x_norm-festlager_breite, x_norm+festlager_breite], [0.6, 0.6],
                             color='black', linewidth=1.5)
                 else:
-                    # Loslager: Kürzerer Strich mit Abstand unter dem Dreieck
-                    ax.plot([x-0.2, x+0.2], [0.5, 0.5],
+                    # Loslager: Längere Linie mit Abstand unter dem Dreieck
+                    ax.plot([x_norm-loslager_breite, x_norm+loslager_breite], [0.5, 0.5],
                             color='black', linewidth=1.5)
 
-            # Bemaßung und Beschriftung für jedes Segment
+            # Bemaßung und Beschriftung für jedes Segment (mit normalisierten Koordinaten)
             label_pos_high = False  # Flag für alternierende Position
-            for seg in segments:
-                x1, x2 = seg['start'], seg['end']
+            for seg in segments_norm:
+                x1_norm, x2_norm = seg['start'], seg['end']
                 # Bemaßungspfeil (tiefer gesetzt)
-                ax.annotate('', xy=(x1, 0.2), xytext=(x2, 0.2), arrowprops=dict(
+                ax.annotate('', xy=(x1_norm, 0.2), xytext=(x2_norm, 0.2), arrowprops=dict(
                     arrowstyle='<->', lw=1.2, color='black'))
 
-                # Bemaßungstext (ganz unten)
+                # Bemaßungstext (ganz unten) - mit realer Länge
                 ax.text(
-                    (x1+x2)/2, 0.1, f"{seg['len']:.2f} m", ha='center', va='top', fontsize=11)
+                    (x1_norm+x2_norm)/2, 0.1, f"{seg['len']:.2f} m", ha='center', va='top', fontsize=11)
 
                 # Logik für Beschriftungsposition
                 y_pos = 1.05  # Standard-Position über dem Balken
@@ -175,12 +206,14 @@ class SystemAnzeiger:
                     label_pos_high = False
 
                 # Beschriftung (z.B. "Feld 1") an der berechneten Position zeichnen
-                ax.text((x1+x2)/2, y_pos,
-                        seg['label'], ha='center', va='bottom', fontsize=10)
+                # Kragarme werden nicht beschriftet
+                if 'Kragarm' not in seg['label']:
+                    ax.text((x1_norm+x2_norm)/2, y_pos,
+                            seg['label'], ha='center', va='bottom', fontsize=10)
 
             ax.axis('off')
             ax.set_aspect('equal')
-            ax.set_xlim(traeger_start - 0.5, traeger_ende + 0.5)
+            ax.set_xlim(traeger_start_norm - 0.5, traeger_ende_norm + 0.5)
             ax.set_ylim(0, 1.8)  # Y-Limit erhöht für mehr Platz
 
             buf = io.BytesIO()

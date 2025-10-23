@@ -142,36 +142,43 @@ class MethodeNachweisEC5:
         """Berechnet EC5-konforme Durchbiegungen: δinst, δend, δnetto mit GZG-Lastkombinationen"""
         try:
             # Prüfe, ob EC-Modus aktiv ist und EC-FEEBB-Durchbiegungen verfügbar sind
-            ec_modus = self.snapshot.get('berechnungsmodus', {}).get('ec_modus', False)
-            gzg_schnittgroessen = self.snapshot.get("Schnittgroessen", {}).get("GZG", {})
-            
+            ec_modus = self.snapshot.get(
+                'berechnungsmodus', {}).get('ec_modus', False)
+            gzg_schnittgroessen = self.snapshot.get(
+                "Schnittgroessen", {}).get("GZG", {})
+
             if ec_modus and gzg_schnittgroessen and "max" in gzg_schnittgroessen:
                 # EC-Modus: Verwende bereits berechnete Durchbiegungen aus FEEBB-EC
                 logger.info("🔬 EC-Modus: Verwende FEEBB-EC Durchbiegungen")
-                
+
                 # Durchbiegung direkt aus FEEBB-Envelope
-                delta_inst = gzg_schnittgroessen["max"].get("durchbiegung", 0)  # mm
-                
+                delta_inst = gzg_schnittgroessen["max"].get(
+                    "durchbiegung", 0)  # mm
+
                 # kdef aus Materialdatenbank
                 querschnitt = self.snapshot.get("querschnitt", {})
                 gruppe = querschnitt.get("materialgruppe", "")
                 typ = querschnitt.get("typ", "")
                 klasse = querschnitt.get("festigkeitsklasse", "")
                 nkl = querschnitt.get("nkl", 1)
-                bemessungsdaten = self.db.get_bemessungsdaten(gruppe, typ, klasse, nkl)
+                bemessungsdaten = self.db.get_bemessungsdaten(
+                    gruppe, typ, klasse, nkl)
                 kdef = bemessungsdaten.get("kdef", 0.8)
-                
+
                 # Zeitabhängige Durchbiegungen
                 delta_end = (1 + kdef) * delta_inst
-                gebrauchstauglichkeit = self.snapshot.get("gebrauchstauglichkeit", {})
+                gebrauchstauglichkeit = self.snapshot.get(
+                    "gebrauchstauglichkeit", {})
                 delta_0 = gebrauchstauglichkeit.get("w_c", 0)
                 delta_netto = delta_end - delta_0
-                
+
                 logger.info(f"EC-FEEBB Durchbiegungen:")
                 logger.info(f"  - δinst (aus FEEBB-EC) = {delta_inst:.2f} mm")
-                logger.info(f"  - δend = (1+kdef) · δinst = {delta_end:.2f} mm (kdef = {kdef:.2f})")
-                logger.info(f"  - δnetto = {delta_netto:.2f} mm (Δ₀ = {delta_0:.2f} mm)")
-                
+                logger.info(
+                    f"  - δend = (1+kdef) · δinst = {delta_end:.2f} mm (kdef = {kdef:.2f})")
+                logger.info(
+                    f"  - δnetto = {delta_netto:.2f} mm (Δ₀ = {delta_0:.2f} mm)")
+
                 return {
                     "delta_inst": delta_inst,
                     "delta_end": delta_end,
@@ -180,10 +187,11 @@ class MethodeNachweisEC5:
                     "kdef": kdef,
                     "delta_0": delta_0
                 }
-            
+
             # Fallback: Alte Methode (Schnell-Modus)
-            logger.info("⚡ Schnell-Modus: Berechne Durchbiegungen aus GZG-Lastkombinationen")
-            
+            logger.info(
+                "⚡ Schnell-Modus: Berechne Durchbiegungen aus GZG-Lastkombinationen")
+
             # Maßgebende GZG-Lastkombination aus Snapshot
             gzg_kombis = self.snapshot.get("GZG_Lastfallkombinationen", {})
             if not gzg_kombis:
@@ -277,7 +285,7 @@ class MethodeNachweisEC5:
         latex_str = (f"$\\sigma_{{m,d}} = \\frac{{M_{{Ed}}}}{{W_y}} = "
                      f"\\frac{{{max_med/1000000:.1f}\\cdot{{10^6}}}}{{{w_y:.0f}}} = {sigma_m_d:.2f} \\,\\text{{N/mm²}} "
                      f"\\leq {fm_d:.2f} \\,\\text{{N/mm²}} \\quad "
-                     f"\\eta = {eta:.3f} {'\\checkmark' if erfuellt else '\\times'}$")
+                     f"\\eta = {eta:.2f} {'\\checkmark' if erfuellt else '\\times'}$")
 
         return {
             "latex": latex_str,
@@ -301,7 +309,7 @@ class MethodeNachweisEC5:
         latex_str = (f"$\\tau_d = 1.5 \\cdot \\frac{{V_{{Ed}}}}{{b \\cdot h}} = "
                      f"1.5 \\cdot \\frac{{{max_ved/1000:.1f}\\cdot{{10^3}}}}{{{b:.0f} \\cdot {h:.0f}}} = {tau_d:.0f} \\,\\text{{N/mm²}} "
                      f"\\leq {fv_d:.2f} \\,\\text{{N/mm²}} \\quad "
-                     f"\\eta = {eta:.3f} {'\\checkmark' if erfuellt else '\\times'}$")
+                     f"\\eta = {eta:.2f} {'\\checkmark' if erfuellt else '\\times'}$")
 
         return {
             "latex": latex_str,
@@ -341,7 +349,7 @@ class MethodeNachweisEC5:
         # LaTeX-String direkt erstellen (analog zur Lastenkombination)
         latex_str = (f"${symbol} = {max_w:.2f} \\,\\text{{mm}} \\leq "
                      f"{symbol.replace(',max', '_{{grenz}}')} = \\frac{{L}}{{{grenz_faktor:.0f}}} = {w_grenz:.2f} \\,\\text{{mm}} \\quad "
-                     f"\\eta = {eta:.3f} {'\\checkmark' if erfuellt else '\\times'}$")
+                     f"\\eta = {eta:.2f} {'\\checkmark' if erfuellt else '\\times'}$")
 
         return {
             "latex": latex_str,

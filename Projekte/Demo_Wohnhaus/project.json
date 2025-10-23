@@ -1,0 +1,10 @@
+{
+  "name": "Demo Wohnhaus",
+  "created": "2025-10-23T16:48:53.000693",
+  "last_modified": "2025-10-23T16:48:53.001776",
+  "description": "Beispielprojekt zur Demonstration",
+  "positions": [
+    "Position_1_01_HT_1_-_Wohnzimmer.json",
+    "EG/Position_1_02_HT_2_-_Küche.json"
+  ]
+}
