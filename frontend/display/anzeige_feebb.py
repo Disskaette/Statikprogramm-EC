@@ -4,6 +4,7 @@ import threading
 import logging
 import numpy as np
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
+from matplotlib.ticker import MultipleLocator, AutoMinorLocator
 
 # Root-Logger-Verhalten
 logging.basicConfig(
@@ -90,9 +91,18 @@ class FeebbAnzeiger:
     def plot_schnittkraefte(self):
         # Direkter Zugriff auf Schnittgrößen-Daten (ohne system_memory)
         schnittgroessen = self.eingabemaske.snapshot.get("Schnittgroessen", {})
-        schnitt = schnittgroessen.get("GZT")
+        schnitt_gzt = schnittgroessen.get("GZT")
+        schnitt_gzg = schnittgroessen.get("GZG")
+        
+        # Debug: Prüfe, was tatsächlich vorhanden ist
+        print(f"🔍 Debug Schnittgroessen-Keys: {list(schnittgroessen.keys())}")
+        print(f"🔍 Debug GZT vorhanden: {schnitt_gzt is not None}")
+        print(f"🔍 Debug GZG vorhanden: {schnitt_gzg is not None}")
+        if schnitt_gzg:
+            print(f"🔍 Debug GZG-Keys: {list(schnitt_gzg.keys())}")
+            print(f"🔍 Debug GZG hat Durchbiegung: {'durchbiegung' in schnitt_gzg}")
 
-        if not schnitt:
+        if not schnitt_gzt:
             self._plot_retry_count += 1
             if self._plot_retry_count > 10:  # Maximal 10 Versuche (5 Sekunden)
                 print("❌ Timeout: Keine GZT-Schnittgrößen nach 10 Versuchen verfügbar.")
@@ -111,19 +121,73 @@ class FeebbAnzeiger:
         self._plot_retry_count = 0
         print("✅ GZT-Schnittgrößen erfolgreich gefunden!")
 
-        m = schnitt.get("moment")
-        q = schnitt.get("querkraft")
-        w = schnitt.get("durchbiegung", None)
+        # GZT-Daten für Moment und Querkraft
+        m = schnitt_gzt.get("moment")
+        q = schnitt_gzt.get("querkraft")
+        
+        # GZG-Daten für Durchbiegung (falls vorhanden UND nicht leer)
+        if schnitt_gzg and "durchbiegung" in schnitt_gzg and schnitt_gzg.get("durchbiegung"):
+            w = schnitt_gzg.get("durchbiegung")
+            print("✅ GZG-Durchbiegung für Darstellung verwendet.")
+            gzg_verfuegbar = True
+        else:
+            # Fallback auf GZT-Durchbiegung falls GZG nicht verfügbar oder leer
+            w = schnitt_gzt.get("durchbiegung", None)
+            if not schnitt_gzg:
+                print("⚠️ Fallback: GZT-Durchbiegung verwendet (GZG nicht vorhanden).")
+            elif not schnitt_gzg.get("durchbiegung"):
+                print("⚠️ Fallback: GZT-Durchbiegung verwendet (GZG leer - keine Q-Lasten?).")
+            gzg_verfuegbar = False
+
+        # Belastungsmuster für maßgebende Kombinationen (GZT)
+        max_data_gzt = schnitt_gzt.get("max", {})
+        moment_muster = max_data_gzt.get("moment_muster")
+        querkraft_muster = max_data_gzt.get("querkraft_muster")
+        
+        # Belastungsmuster für Durchbiegung (GZG falls verfügbar UND nicht leer)
+        if gzg_verfuegbar:
+            max_data_gzg = schnitt_gzg.get("max", {})
+            durchbiegung_muster = max_data_gzg.get("durchbiegung_muster")
+            durchbiegung_kombi = max_data_gzg.get("durchbiegung_kombi", "")
+        else:
+            durchbiegung_muster = max_data_gzt.get("durchbiegung_muster")
+            durchbiegung_kombi = max_data_gzt.get("durchbiegung_kombi", "")
+
+        # Kombinationsnamen (GZT)
+        moment_kombi = max_data_gzt.get("moment_kombi", "")
+        querkraft_kombi = max_data_gzt.get("querkraft_kombi", "")
 
         if not m or not q:
             print("Unvollständige Schnittgrößen-Daten.")
             return
 
-        # Spannweiten und Feldgrenzen bestimmen
+        # Spannweiten und Feldgrenzen bestimmen (in korrekter Reihenfolge!)
 
         spannweiten_dict = self.eingabemaske.snapshot.get("spannweiten", {})
-        spannweiten_keys = list(spannweiten_dict.keys())
-        spannweiten = list(spannweiten_dict.values())
+        
+        # WICHTIG: Felder in korrekter geometrischer Reihenfolge sortieren
+        # Reihenfolge: kragarm_links, feld_1, feld_2, ..., kragarm_rechts
+        kragarm_links = spannweiten_dict.get("kragarm_links", 0)
+        kragarm_rechts = spannweiten_dict.get("kragarm_rechts", 0)
+        normale_felder = sorted([(k, v) for k, v in spannweiten_dict.items() if k.startswith("feld_")])
+        
+        # Korrekte Reihenfolge aufbauen
+        spannweiten_keys = []
+        spannweiten = []
+        
+        if kragarm_links > 0:
+            spannweiten_keys.append("kragarm_links")
+            spannweiten.append(kragarm_links)
+        
+        for feld_key, feld_wert in normale_felder:
+            spannweiten_keys.append(feld_key)
+            spannweiten.append(feld_wert)
+        
+        if kragarm_rechts > 0:
+            spannweiten_keys.append("kragarm_rechts")
+            spannweiten.append(kragarm_rechts)
+        
+        # Feldgrenzen berechnen
         feldgrenzen = [0]
         for l in spannweiten:
             feldgrenzen.append(feldgrenzen[-1] + l)
@@ -179,29 +243,181 @@ class FeebbAnzeiger:
             axs[2].axvline(grenze, color='gray', linestyle='--', linewidth=1)
             axs[3].axvline(grenze, color='gray', linestyle='--', linewidth=1)
 
+        # 5b. Belastungsmuster als farbige Hinterlegung darstellen
+        def zeichne_belastungsmuster(ax, muster, feldgrenzen):
+            """Zeichnet belastete Felder als farbige Hintergründe."""
+            if muster is None:
+                return
+
+            # Normale Felder identifizieren (ohne Kragarme)
+            # Das Muster enthält nur die normalen Felder (feld_1, feld_2, ...)
+            # Die Feldgrenzen-Liste enthält aber alle Felder inkl. Kragarme
+            
+            # Index-Offset für normale Felder berechnen
+            offset = 1 if kragarm_links > 0 else 0
+            
+            for idx, ist_belastet in enumerate(muster):
+                # idx bezieht sich auf normale Felder (0 = feld_1, 1 = feld_2, ...)
+                # In feldgrenzen ist das bei Position offset + idx
+                feld_start_idx = offset + idx
+                feld_ende_idx = offset + idx + 1
+                
+                if feld_ende_idx < len(feldgrenzen):
+                    feld_start = feldgrenzen[feld_start_idx]
+                    feld_ende = feldgrenzen[feld_ende_idx]
+
+                    if ist_belastet:
+                        ax.axvspan(feld_start, feld_ende,
+                                   alpha=0.15, color='green', zorder=0)
+                    else:
+                        ax.axvspan(feld_start, feld_ende,
+                                   alpha=0.08, color='red', zorder=0)
+
         # 6. Momentendiagramm (klassische Vorzeichen)
         # Vorzeichen drehen und in kNm umrechnen
         m_kNm = np.array(m) / 1000000
-        axs[1].plot(x, m_kNm, color='red', label="Moment")
-        axs[1].axhline(0, color='gray', linestyle='--', linewidth=1)
+        zeichne_belastungsmuster(axs[1], moment_muster, feldgrenzen)
+        axs[1].plot(x, m_kNm, color='red', linewidth=2,
+                    label="Moment", zorder=2)
+        axs[1].axhline(0, color='gray', linestyle='--', linewidth=1, zorder=1)
         axs[1].set_ylabel("M [kNm]")
-        axs[1].set_title("Momentenverlauf (unten positiv)")
-        axs[1].legend()
+        title_moment = f"Momentenverlauf (unten positiv)\n{moment_kombi}"
+        axs[1].set_title(title_moment, fontsize=10)
+        
+        # Feinere Y-Achsen-Skalierung für Moment
+        m_max = np.max(np.abs(m_kNm))
+        y_limit = m_max * 1.15  # 15% Puffer
+        axs[1].set_ylim(-y_limit, y_limit)
+        # Tick-Spacing auf saubere 5er oder 10er runden
+        raw_spacing = m_max / 5  # Ca. 5-6 Intervalle
+        if raw_spacing <= 5:
+            tick_spacing = 5
+        elif raw_spacing <= 10:
+            tick_spacing = 10
+        elif raw_spacing <= 15:
+            tick_spacing = 15
+        elif raw_spacing <= 20:
+            tick_spacing = 20
+        elif raw_spacing <= 25:
+            tick_spacing = 25
+        elif raw_spacing <= 50:
+            tick_spacing = 50
+        else:
+            tick_spacing = int(round(raw_spacing / 10) * 10)  # Auf 10er runden
+        axs[1].yaxis.set_major_locator(MultipleLocator(tick_spacing))
+        axs[1].yaxis.set_minor_locator(AutoMinorLocator(2))
+        axs[1].grid(True, which='major', alpha=0.3, linestyle='-')
+        axs[1].grid(True, which='minor', alpha=0.15, linestyle=':')
+        
+        # Maxima/Minima markieren
+        idx_max = np.argmax(m_kNm)
+        idx_min = np.argmin(m_kNm)
+        axs[1].plot(x[idx_max], m_kNm[idx_max], 'ro', markersize=6, zorder=3)
+        axs[1].plot(x[idx_min], m_kNm[idx_min], 'ro', markersize=6, zorder=3)
+        axs[1].annotate(f'{m_kNm[idx_max]:.1f}', xy=(x[idx_max], m_kNm[idx_max]), 
+                       xytext=(5, 5), textcoords='offset points', fontsize=8, color='red',
+                       bbox=dict(boxstyle='round,pad=0.3', facecolor='white', edgecolor='red', alpha=0.8))
+        axs[1].annotate(f'{m_kNm[idx_min]:.1f}', xy=(x[idx_min], m_kNm[idx_min]), 
+                       xytext=(5, -15), textcoords='offset points', fontsize=8, color='red',
+                       bbox=dict(boxstyle='round,pad=0.3', facecolor='white', edgecolor='red', alpha=0.8))
+
+        # Legende mit Belastungsmuster-Info
+        from matplotlib.patches import Patch
+        legend_elements = [
+            plt.Line2D([0], [0], color='red', linewidth=2, label='Moment'),
+            Patch(facecolor='green', alpha=0.15, label='Feld belastet (Q)'),
+            Patch(facecolor='red', alpha=0.08, label='Feld unbelastet')
+        ]
+        axs[1].legend(handles=legend_elements, loc='best', fontsize=8)
 
         # 7. Querkraftdiagramm (klassische Vorzeichen, in kN)
         q_kN = np.array(q) / 1000  # Vorzeichen drehen und in kN umrechnen
-        axs[2].plot(x, q_kN, color='blue', label="Querkraft")
-        axs[2].axhline(0, color='gray', linestyle='--', linewidth=1)
+        zeichne_belastungsmuster(axs[2], querkraft_muster, feldgrenzen)
+        axs[2].plot(x, q_kN, color='blue', linewidth=2,
+                    label="Querkraft", zorder=2)
+        axs[2].axhline(0, color='gray', linestyle='--', linewidth=1, zorder=1)
         axs[2].set_ylabel("Q [kN]")
-        axs[2].set_title("Querkraftverlauf (unten positiv)")
+        title_querkraft = f"Querkraftverlauf (unten positiv)\n{querkraft_kombi}"
+        axs[2].set_title(title_querkraft, fontsize=10)
+        
+        # Feinere Y-Achsen-Skalierung für Querkraft
+        q_max = np.max(np.abs(q_kN))
+        y_limit_q = q_max * 1.15
+        axs[2].set_ylim(-y_limit_q, y_limit_q)
+        # Tick-Spacing auf saubere 5er oder 10er runden (gleiche Logik wie Moment)
+        raw_spacing_q = q_max / 5
+        if raw_spacing_q <= 5:
+            tick_spacing_q = 5
+        elif raw_spacing_q <= 10:
+            tick_spacing_q = 10
+        elif raw_spacing_q <= 15:
+            tick_spacing_q = 15
+        elif raw_spacing_q <= 20:
+            tick_spacing_q = 20
+        elif raw_spacing_q <= 25:
+            tick_spacing_q = 25
+        elif raw_spacing_q <= 50:
+            tick_spacing_q = 50
+        else:
+            tick_spacing_q = int(round(raw_spacing_q / 10) * 10)
+        axs[2].yaxis.set_major_locator(MultipleLocator(tick_spacing_q))
+        axs[2].yaxis.set_minor_locator(AutoMinorLocator(2))
+        axs[2].grid(True, which='major', alpha=0.3, linestyle='-')
+        axs[2].grid(True, which='minor', alpha=0.15, linestyle=':')
+        
+        # Maxima/Minima markieren
+        idx_max_q = np.argmax(q_kN)
+        idx_min_q = np.argmin(q_kN)
+        axs[2].plot(x[idx_max_q], q_kN[idx_max_q], 'bo', markersize=6, zorder=3)
+        axs[2].plot(x[idx_min_q], q_kN[idx_min_q], 'bo', markersize=6, zorder=3)
+        axs[2].annotate(f'{q_kN[idx_max_q]:.1f}', xy=(x[idx_max_q], q_kN[idx_max_q]), 
+                       xytext=(5, 5), textcoords='offset points', fontsize=8, color='blue',
+                       bbox=dict(boxstyle='round,pad=0.3', facecolor='white', edgecolor='blue', alpha=0.8))
+        axs[2].annotate(f'{q_kN[idx_min_q]:.1f}', xy=(x[idx_min_q], q_kN[idx_min_q]), 
+                       xytext=(5, -15), textcoords='offset points', fontsize=8, color='blue',
+                       bbox=dict(boxstyle='round,pad=0.3', facecolor='white', edgecolor='blue', alpha=0.8))
+        
         axs[2].legend()
 
-        # 8. Durchbiegung (wie gehabt)
+        # 8. Durchbiegung (GZG!)
         if w is not None:
-            axs[3].plot(x, -np.array(w), color='purple', label="Durchbiegung")
-            axs[3].axhline(0, color='gray', linestyle='--', linewidth=1)
+            w_mm = -np.array(w)  # Vorzeichen für Darstellung (unten positiv)
+            zeichne_belastungsmuster(axs[3], durchbiegung_muster, feldgrenzen)
+            axs[3].plot(x, w_mm, color='purple',
+                        linewidth=2, label="Durchbiegung", zorder=2)
+            axs[3].axhline(0, color='gray', linestyle='--',
+                           linewidth=1, zorder=1)
             axs[3].set_ylabel("w [mm]")
-            axs[3].set_title("Durchbiegung (unten positiv)")
+            # GZG im Titel kennzeichnen (nur wenn GZG wirklich verfügbar)
+            grenzzustand_text = "GZG" if gzg_verfuegbar else "GZT (Fallback)"
+            title_durchbiegung = f"Durchbiegung (unten positiv) - {grenzzustand_text}\n{durchbiegung_kombi}"
+            axs[3].set_title(title_durchbiegung, fontsize=10)
+            
+            # Feinere Y-Achsen-Skalierung für Durchbiegung
+            # Obere Grenze bei 0 (keine Aufbiegung), untere Grenze bei max Durchbiegung + Puffer
+            w_max = np.max(w_mm)  # Maximale Durchbiegung nach unten
+            w_min = np.min(w_mm)  # Sollte ~0 sein oder leicht negativ
+            # Y-Limits: von kleiner negativer Wert (oder 0) bis max + 15%
+            y_min_w = min(w_min * 1.15, -w_max * 0.05)  # Kleiner Puffer nach oben
+            y_max_w = w_max * 1.15  # 15% Puffer nach unten
+            axs[3].set_ylim(y_min_w, y_max_w)
+            
+            # Ticks anpassen - auf gerade Zahlen runden
+            raw_spacing_w = w_max / 5  # Ca. 5-6 Intervalle
+            # Auf nächste gerade Zahl runden (2, 4, 6, 8, 10, 12, ...)
+            tick_spacing_w = max(2, int(round(raw_spacing_w / 2) * 2))
+            axs[3].yaxis.set_major_locator(MultipleLocator(tick_spacing_w))
+            axs[3].yaxis.set_minor_locator(AutoMinorLocator(2))
+            axs[3].grid(True, which='major', alpha=0.3, linestyle='-')
+            axs[3].grid(True, which='minor', alpha=0.15, linestyle=':')
+            
+            # Maxima/Minima markieren (bei Durchbiegung vor allem Maximum interessant)
+            idx_max_w = np.argmax(w_mm)
+            axs[3].plot(x[idx_max_w], w_mm[idx_max_w], 'o', color='purple', markersize=6, zorder=3)
+            axs[3].annotate(f'{w_mm[idx_max_w]:.2f} mm', xy=(x[idx_max_w], w_mm[idx_max_w]), 
+                           xytext=(5, 5), textcoords='offset points', fontsize=8, color='purple',
+                           bbox=dict(boxstyle='round,pad=0.3', facecolor='white', edgecolor='purple', alpha=0.8))
+            
             axs[3].legend()
 
         axs[3].set_xlabel("Länge [m]")

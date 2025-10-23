@@ -3,7 +3,7 @@ import logging
 from backend.calculations.lastenkombination import MethodeLastkombi
 from backend.calculations.lastkombination_gzg import MethodeLastkombiGZG
 from backend.database.datenbank_holz import datenbank_holz_class
-from backend.calculations.feebb_schnittstelle import FeebbBerechnung
+from backend.calculations.feebb_schnittstelle_ec import FeebbBerechnungEC
 from backend.calculations.nachweis_ec5 import MethodeNachweisEC5
 
 # Logger für dieses Modul
@@ -26,13 +26,17 @@ def add_load_cases(snapshot: dict) -> dict:
 
 def add_section_forces(snapshot: dict) -> dict:
     """
-    Wrapper für die FEEBB-Berechnung.
+    Wrapper für die EC-konforme FEEBB-Berechnung.
     Übergabe kompletter Snapshots und Rückgabe
-    der maximalen Schnittkräfte.
+    der Schnittgrößen (inkl. Envelopes und Details).
     """
-    # Erstelle FeebbBerechnung mit Snapshot
-    feb = FeebbBerechnung(snapshot)
-    return feb.compute()
+    try:
+        # EC-konforme FE-Berechnung mit Datenbankparametern
+        feb = FeebbBerechnungEC(snapshot, db)
+        return feb.compute()
+    except Exception as e:
+        logger.error(f"Fehler bei EC-FEEBB-Berechnung: {e}")
+        return {'Schnittgroessen': {}}
 
 
 def add_gzg_load_combinations(snapshot: dict) -> dict:
