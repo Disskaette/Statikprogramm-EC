@@ -4,6 +4,7 @@ from backend.calculations.lastenkombination import MethodeLastkombi
 from backend.calculations.lastkombination_gzg import MethodeLastkombiGZG
 from backend.database.datenbank_holz import datenbank_holz_class
 from backend.calculations.feebb_schnittstelle_ec import FeebbBerechnungEC
+from backend.calculations.feebb_schnittstelle import FeebbBerechnung
 from backend.calculations.nachweis_ec5 import MethodeNachweisEC5
 
 # Logger für dieses Modul
@@ -26,16 +27,31 @@ def add_load_cases(snapshot: dict) -> dict:
 
 def add_section_forces(snapshot: dict) -> dict:
     """
-    Wrapper für die EC-konforme FEEBB-Berechnung.
+    Wrapper für die FEEBB-Berechnung.
+    Wählt basierend auf dem Berechnungsmodus die entsprechende Methode:
+    - ec_modus=True: EC-konforme Berechnung mit Belastungsmustern (langsam, genau)
+    - ec_modus=False: Vollast-Berechnung (schnell)
+    
     Übergabe kompletter Snapshots und Rückgabe
     der Schnittgrößen (inkl. Envelopes und Details).
     """
     try:
-        # EC-konforme FE-Berechnung mit Datenbankparametern
-        feb = FeebbBerechnungEC(snapshot, db)
-        return feb.compute()
+        # Berechnungsmodus aus Snapshot lesen (default: Schnell-Modus)
+        ec_modus = snapshot.get('berechnungsmodus', {}).get('ec_modus', False)
+        
+        if ec_modus:
+            logger.info("🔬 EC-konforme FEEBB-Berechnung gestartet (mit Belastungsmustern)")
+            # EC-konforme FE-Berechnung mit Datenbankparametern
+            feb = FeebbBerechnungEC(snapshot, db)
+            return feb.compute()
+        else:
+            logger.info("⚡ Schnelle Vollast-FEEBB-Berechnung gestartet")
+            # Alte schnelle Berechnung (alle Felder belastet)
+            feb = FeebbBerechnung(snapshot)
+            return feb.compute()
+            
     except Exception as e:
-        logger.error(f"Fehler bei EC-FEEBB-Berechnung: {e}")
+        logger.error("Fehler bei FEEBB-Berechnung: %s", e)
         return {'Schnittgroessen': {}}
 
 

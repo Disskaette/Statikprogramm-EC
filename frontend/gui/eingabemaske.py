@@ -110,6 +110,13 @@ class Eingabemaske:
         self._berechnung_timer_id = None
         self._berechnungsversuche = 0
         self._update_timer = None
+        # Berechnungsmodus
+        self.ec_modus_var = None
+        # Ladeindikator
+        self.loading_label = None
+        self.loading_animation_running = False
+        # Cache für strukturelle Berechnungen
+        self._cached_structural_hash = None
 
         '''Scrollbar'''
         # Wrapper-Frame für Scrollbereich
@@ -137,7 +144,6 @@ class Eingabemaske:
         self.inner_window = self.canvas.create_window(
             (0, 0), window=self.content_frame, anchor="nw")
 
-        # Eingabe/Ausgabe-Frames ins content_frame
         self.eingabe_frame = ttk.Frame(self.content_frame)
         self.eingabe_frame.grid(row=0, column=0, sticky="nw")
 
@@ -223,9 +229,32 @@ class Eingabemaske:
 
     def setup_gui(self):
         # --- Eingabeframe ---
+        berechnungsmodus_frame = ttk.LabelFrame(
+            self.eingabe_frame, text="Berechnungsmodus", padding=10)
+        berechnungsmodus_frame.pack(padx=10, pady=10, fill="x")
+
         frame_system_eingabe = ttk.LabelFrame(
             self.eingabe_frame, text="Systemeingabe", padding=10)
         frame_system_eingabe.pack(padx=10, pady=10, fill="x")
+
+        # Berechnungsmodus-Umschalter
+        # ttk.Separator(berechnungsmodus_frame, orient='horizontal').grid(
+        #     row=3, column=0, columnspan=2, sticky='ew', pady=5)
+        self.ec_modus_var = tk.BooleanVar(
+            value=False)  # Default: Schnell-Modus
+        mode_frame = ttk.Frame(berechnungsmodus_frame)
+        mode_frame.grid(row=0, column=0, sticky="w")
+        ttk.Radiobutton(mode_frame, text="⚡ Schnell (Vollast)",
+                        variable=self.ec_modus_var, value=False,
+                        command=self.on_any_change).pack(side="left", padx=5)
+        ttk.Radiobutton(mode_frame, text="🔬 EC-Muster (genau)",
+                        variable=self.ec_modus_var, value=True,
+                        command=self.on_any_change).pack(side="left", padx=5)
+
+        # Ladeindikator
+        self.loading_label = ttk.Label(
+            berechnungsmodus_frame, text="", foreground="blue")
+        self.loading_label.grid(row=1, column=0, columnspan=2, pady=5)
 
         # Sprungmaß
         ttk.Label(frame_system_eingabe, text="Sprungmaß e [m]:").grid(row=0,
@@ -768,15 +797,15 @@ class Eingabemaske:
         situation_combo.bind("<<ComboboxSelected>>",
                              self.update_gebrauchstauglichkeit_eingabe)
         situation_combo.bind("<<ComboboxSelected>>",
-                             self.on_any_change, add="+")
+                             self._on_gebrauchstauglichkeit_change, add="+")
         self.w_c_überhoehung_wert = "0,00"
         self.update_gebrauchstauglichkeit_eingabe()
 
     def _on_w_c_change(self, event):
         # aktuellen Text aus dem Entry holen
         self.w_c_überhoehung_wert = self.w_c_überhoehung.get()
-        # danach deine allgemeine Änderungs-Logik aufrufen
-        self.on_any_change(event)
+        # Nur Durchbiegungsnachweise neu berechnen
+        self._on_gebrauchstauglichkeit_change(event)
 
     def update_gebrauchstauglichkeit_eingabe(self, event=None):
         logger.debug("🏗️ Gebrauchstauglichkeitsfenster wird aktualisiert")
@@ -872,7 +901,7 @@ class Eingabemaske:
             self.w_inst_grenz_eigen.insert(0, "300")
             self.w_inst_grenz_eigen.grid(row=3, column=1, sticky="w")
             self.w_inst_grenz_eigen.bind("<KeyRelease>",
-                                         self.on_any_change)
+                                         self._on_gebrauchstauglichkeit_change)
 
             ttk.Label(self.gebrauchstauglichkeit_frame, text="w_fin         -> L / :", width=12).grid(
                 row=4, column=0, sticky="w")
@@ -881,7 +910,7 @@ class Eingabemaske:
             self.w_fin_grenz_eigen.insert(0, "200")
             self.w_fin_grenz_eigen.grid(row=4, column=1, sticky="w")
             self.w_fin_grenz_eigen.bind("<KeyRelease>",
-                                        self.on_any_change)
+                                        self._on_gebrauchstauglichkeit_change)
 
             ttk.Label(self.gebrauchstauglichkeit_frame, text="w_fin_net -> L / :", width=12).grid(
                 row=5, column=0, sticky="w")
@@ -891,8 +920,51 @@ class Eingabemaske:
             self.w_net_fin_grenz_eigen.grid(
                 row=5, column=1, sticky="w")
             self.w_net_fin_grenz_eigen.bind("<KeyRelease>",
-                                            self.on_any_change)
-            self.on_any_change()
+                                            self._on_gebrauchstauglichkeit_change)
+
+    def _on_gebrauchstauglichkeit_change(self, event=None):
+        """
+        Spezieller Callback für Änderungen an Gebrauchstauglichkeits-Parametern.
+        Sendet Snapshot mit Flag 'only_deflection_check' an Backend.
+        """
+        if not self.gui_fertig_geladen:
+            return
+
+        # Prüfe, ob bereits vollständige Berechnungsergebnisse vorhanden sind
+        if not hasattr(self, 'snapshot') or not self.snapshot:
+            logger.info(
+                "⚠️ Keine Berechnungsergebnisse vorhanden - führe vollständige Berechnung durch")
+            self.on_any_change(event)
+            return
+
+        # Prüfe, ob Schnittgrößen vorhanden sind
+        if 'Schnittgroessen' not in self.snapshot or not self.snapshot.get('Schnittgroessen'):
+            logger.info(
+                "⚠️ Keine Schnittgrößen vorhanden - führe vollständige Berechnung durch")
+            self.on_any_change(event)
+            return
+
+        logger.info(
+            "🔄 Nur Durchbiegungsnachweise werden über Backend neu berechnet")
+
+        # Erstelle Snapshot mit allen Daten + Flag für Durchbiegungsberechnung
+        input_snapshot = {
+            "sprungmass": self.snapshot.get("sprungmass"),
+            "lasten": self.snapshot.get("lasten"),
+            "spannweiten": self.snapshot.get("spannweiten"),
+            "querschnitt": self.snapshot.get("querschnitt"),
+            "gebrauchstauglichkeit": self.get_gebrauchstauglichkeit_dict(),  # Aktualisiert!
+            "berechnungsmodus": self.snapshot.get("berechnungsmodus", {}),
+            # Wichtig: Bestehende Ergebnisse mitgeben
+            "Schnittgroessen": self.snapshot.get("Schnittgroessen"),
+            "Lastfallkombinationen": self.snapshot.get("Lastfallkombinationen"),
+            "GZG_Lastfallkombinationen": self.snapshot.get("GZG_Lastfallkombinationen"),
+            # Flag: Nur Durchbiegungsnachweise berechnen
+            "calculation_mode": "only_deflection_check"
+        }
+
+        # Durch den normalen Service-Flow (saubere Trennung!)
+        self.orch.process_snapshot(input_snapshot, self._on_service_done)
 
     def on_any_change(self, event=None):
         # Debounce-Logik: Bricht den vorherigen Timer ab und startet einen neuen.
@@ -915,9 +987,15 @@ class Eingabemaske:
                 "lasten":    self.get_lasten_list(),
                 "spannweiten": self.get_spannweiten_dict(),
                 "querschnitt": self.get_querschnitt_dict(),
-                "gebrauchstauglichkeit": self.get_gebrauchstauglichkeit_dict()
+                "gebrauchstauglichkeit": self.get_gebrauchstauglichkeit_dict(),
+                # Berechnungsmodus hinzufügen
+                "berechnungsmodus": {
+                    "ec_modus": self.ec_modus_var.get() if self.ec_modus_var else False
+                }
             }
             logger.info(f"Input Snapshot: {input_snapshot}")
+            # Ladeanimation starten
+            self._start_loading_animation()
             # Temporärer Snapshot für Backend-Verarbeitung
             # Der finale Snapshot wird erst in _on_service_done erstellt
             # Zwischenspeichern der Eingabedaten für spätere Verwendung
@@ -929,12 +1007,15 @@ class Eingabemaske:
         # Direkte Verarbeitung im Haupt-Thread, um Scope-Probleme zu vermeiden
         def handle_in_main_thread():
             if errors:
+                self._stop_loading_animation()
                 self.show_error_messages(errors)
                 return
 
             if not result:
-                logger.warning(
-                    "Keine Ergebnisse vom Backend-Orchestrator erhalten")
+                # Keine neuen Ergebnisse (z.B. Hash-Match) - Ladeanimation stoppen
+                logger.info(
+                    "ℹ️ Keine Änderung erkannt - behalte bestehende Ergebnisse")
+                self._stop_loading_animation()
                 return
 
             # Debug: Was kommt vom Backend?
@@ -962,6 +1043,10 @@ class Eingabemaske:
                 "spannweiten": self.get_spannweiten_dict(),
                 "querschnitt": self.get_querschnitt_dict(),
                 "gebrauchstauglichkeit": self.get_gebrauchstauglichkeit_dict(),
+                # Berechnungsmodus
+                "berechnungsmodus": {
+                    "ec_modus": self.ec_modus_var.get() if self.ec_modus_var else False
+                },
                 # Backend-Ergebnisse (direkt)
                 'Lastfallkombinationen': result.get('Lastfallkombinationen', {}),
                 'GZG_Lastfallkombinationen': result.get('GZG_Lastfallkombinationen', {}),
@@ -987,6 +1072,9 @@ class Eingabemaske:
             # FEEBB-Interface aktualisieren
             self.feebb.close_schnittkraftfenster()
             self.feebb.update_maxwerte()
+
+            # Ladeanimation stoppen
+            self._stop_loading_animation()
 
         # Führt den handle-Code im Haupt-Thread aus, um Thread-Konflikte zu vermeiden
         self.eingabe_frame.after(0, handle_in_main_thread)
@@ -1080,6 +1168,56 @@ class Eingabemaske:
     def on_querschnitt_auswahl(self, event=None):
         self.update_festigkeitsklasse_dropdown()
         self.on_any_change()
+
+    def _start_loading_animation(self):
+        """Startet die Ladeanimation."""
+        if not self.loading_label:
+            return
+
+        # Bestimme Modus-Text
+        ec_modus = self.ec_modus_var.get() if self.ec_modus_var else False
+        modus_text = "EC-Kombinatorik" if ec_modus else "Volllast"
+
+        self.loading_animation_running = True
+        self.loading_label.config(text=f"⏳ Berechnung läuft ({modus_text})...")
+        self._animate_loading()
+
+    def _animate_loading(self):
+        """Animiert den Ladeindikator mit rotierenden Symbolen."""
+        if not self.loading_animation_running or not self.loading_label:
+            return
+
+        symbols = ["⏳", "⌛"]
+        current_text = self.loading_label.cget("text")
+
+        # Extrahiere Modus aus aktuellem Text
+        if "(" in current_text:
+            modus_part = current_text[current_text.find(
+                "("):current_text.find(")")+1]
+        else:
+            modus_part = ""
+
+        # Rotiere Symbol
+        if "⏳" in current_text:
+            new_symbol = "⌛"
+        else:
+            new_symbol = "⏳"
+
+        self.loading_label.config(
+            text=f"{new_symbol} Berechnung läuft {modus_part}...")
+
+        # Wiederhole Animation nach 500ms
+        if self.loading_animation_running:
+            self.root.after(500, self._animate_loading)
+
+    def _stop_loading_animation(self):
+        """Stoppt die Ladeanimation."""
+        self.loading_animation_running = False
+        if self.loading_label:
+            self.loading_label.config(text="✅ Berechnung abgeschlossen")
+            # Nach 2 Sekunden Text löschen
+            self.root.after(2000, lambda: self.loading_label.config(
+                text="") if self.loading_label else None)
 
 
 def starte_gui():

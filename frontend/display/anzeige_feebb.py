@@ -99,8 +99,13 @@ class FeebbAnzeiger:
         print(f"🔍 Debug GZT vorhanden: {schnitt_gzt is not None}")
         print(f"🔍 Debug GZG vorhanden: {schnitt_gzg is not None}")
         if schnitt_gzg:
-            print(f"🔍 Debug GZG-Keys: {list(schnitt_gzg.keys())}")
-            print(f"🔍 Debug GZG hat Durchbiegung: {'durchbiegung' in schnitt_gzg}")
+            if isinstance(schnitt_gzg, dict):
+                print(f"🔍 Debug GZG-Typ: Dictionary, Keys: {list(schnitt_gzg.keys())}")
+                print(f"🔍 Debug GZG hat Durchbiegung: {'durchbiegung' in schnitt_gzg}")
+            elif isinstance(schnitt_gzg, list):
+                print(f"🔍 Debug GZG-Typ: Liste mit {len(schnitt_gzg)} Einwirkungen (Schnell-Modus)")
+            else:
+                print(f"🔍 Debug GZG-Typ: {type(schnitt_gzg)}")
 
         if not schnitt_gzt:
             self._plot_retry_count += 1
@@ -122,21 +127,71 @@ class FeebbAnzeiger:
         print("✅ GZT-Schnittgrößen erfolgreich gefunden!")
 
         # GZT-Daten für Moment und Querkraft
+        # Beide Modi (Schnell/EC) haben "moment" und "querkraft" direkt im Dict
         m = schnitt_gzt.get("moment")
         q = schnitt_gzt.get("querkraft")
         
-        # GZG-Daten für Durchbiegung (falls vorhanden UND nicht leer)
-        if schnitt_gzg and "durchbiegung" in schnitt_gzg and schnitt_gzg.get("durchbiegung"):
-            w = schnitt_gzg.get("durchbiegung")
-            print("✅ GZG-Durchbiegung für Darstellung verwendet.")
-            gzg_verfuegbar = True
+        # Debug: Prüfe ob m und q vorhanden sind
+        if not m or not q:
+            print(f"❌ Fehler: GZT-Daten unvollständig!")
+            print(f"   m vorhanden: {m is not None}, q vorhanden: {q is not None}")
+            if m: print(f"   m Typ: {type(m)}, Länge: {len(m) if hasattr(m, '__len__') else 'N/A'}")
+            if q: print(f"   q Typ: {type(q)}, Länge: {len(q) if hasattr(q, '__len__') else 'N/A'}")
+        
+        # GZG-Daten für Durchbiegung - Unterscheidung zwischen Schnell-Modus (Liste) und EC-Modus (Dict)
+        gzg_verfuegbar = False
+        durchbiegung_muster = None
+        durchbiegung_kombi = ""
+        
+        if schnitt_gzg:
+            # Prüfe, ob GZG eine Liste (Schnell-Modus) oder Dict (EC-Modus) ist
+            if isinstance(schnitt_gzg, list):
+                # Schnell-Modus: GZG ist Liste von Einzeleinwirkungen
+                # Finde die Einwirkung mit der größten Durchbiegung
+                if len(schnitt_gzg) > 0:
+                    max_durchbiegung = 0
+                    max_einwirkung = None
+                    
+                    for einwirkung in schnitt_gzg:
+                        if "durchbiegung" in einwirkung and einwirkung["durchbiegung"]:
+                            max_w = max(abs(wert) for wert in einwirkung["durchbiegung"])
+                            if max_w > max_durchbiegung:
+                                max_durchbiegung = max_w
+                                max_einwirkung = einwirkung
+                    
+                    if max_einwirkung:
+                        w = max_einwirkung["durchbiegung"]
+                        lastfall = max_einwirkung.get("lastfall", "unbekannt")
+                        print(f"ℹ️ Schnell-Modus: GZG-Durchbiegung von Lastfall '{lastfall}' verwendet (max: {max_durchbiegung:.2f} mm)")
+                        gzg_verfuegbar = True
+                    else:
+                        # Fallback falls keine Durchbiegungsdaten in GZG
+                        w = schnitt_gzt.get("durchbiegung", None)
+                        print("⚠️ Schnell-Modus: Keine GZG-Durchbiegungen gefunden, verwende GZT")
+                        gzg_verfuegbar = False
+                else:
+                    # Leere Liste
+                    w = schnitt_gzt.get("durchbiegung", None)
+                    print("⚠️ Schnell-Modus: GZG-Liste leer, verwende GZT-Durchbiegung")
+                    gzg_verfuegbar = False
+                    
+            elif isinstance(schnitt_gzg, dict) and "durchbiegung" in schnitt_gzg:
+                # EC-Modus: GZG ist Dictionary mit Envelope
+                w = schnitt_gzg.get("durchbiegung")
+                print("✅ EC-Modus: GZG-Durchbiegung für Darstellung verwendet.")
+                gzg_verfuegbar = True
+                max_data_gzg = schnitt_gzg.get("max", {})
+                durchbiegung_muster = max_data_gzg.get("durchbiegung_muster")
+                durchbiegung_kombi = max_data_gzg.get("durchbiegung_kombi", "")
+            else:
+                # Fallback
+                w = schnitt_gzt.get("durchbiegung", None)
+                print("⚠️ Fallback: GZT-Durchbiegung verwendet (GZG-Struktur unbekannt).")
+                gzg_verfuegbar = False
         else:
-            # Fallback auf GZT-Durchbiegung falls GZG nicht verfügbar oder leer
+            # Kein GZG vorhanden
             w = schnitt_gzt.get("durchbiegung", None)
-            if not schnitt_gzg:
-                print("⚠️ Fallback: GZT-Durchbiegung verwendet (GZG nicht vorhanden).")
-            elif not schnitt_gzg.get("durchbiegung"):
-                print("⚠️ Fallback: GZT-Durchbiegung verwendet (GZG leer - keine Q-Lasten?).")
+            print("⚠️ Fallback: GZT-Durchbiegung verwendet (GZG nicht vorhanden).")
             gzg_verfuegbar = False
 
         # Belastungsmuster für maßgebende Kombinationen (GZT)
@@ -144,12 +199,8 @@ class FeebbAnzeiger:
         moment_muster = max_data_gzt.get("moment_muster")
         querkraft_muster = max_data_gzt.get("querkraft_muster")
         
-        # Belastungsmuster für Durchbiegung (GZG falls verfügbar UND nicht leer)
-        if gzg_verfuegbar:
-            max_data_gzg = schnitt_gzg.get("max", {})
-            durchbiegung_muster = max_data_gzg.get("durchbiegung_muster")
-            durchbiegung_kombi = max_data_gzg.get("durchbiegung_kombi", "")
-        else:
+        # Falls GZG nicht verfügbar oder Schnell-Modus: Verwende GZT-Durchbiegungsmuster
+        if not gzg_verfuegbar:
             durchbiegung_muster = max_data_gzt.get("durchbiegung_muster")
             durchbiegung_kombi = max_data_gzt.get("durchbiegung_kombi", "")
 
