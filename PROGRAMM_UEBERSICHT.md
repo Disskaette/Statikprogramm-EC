@@ -45,12 +45,14 @@ Das Programm folgt einer **3-Schicht-Architektur**:
 
 ### **1. HAUPTEINSTIEG**
 
-#### `main.py`
-- **Aufgabe**: Programmstart und Initialisierung
+#### `main_v2.py`
+- **Aufgabe**: Programmstart und Haupt-GUI-Initialisierung
 - **Funktionen**:
   - Startet die Tkinter-GUI
-  - Initialisiert den Backend-Orchestrator
+  - Initialisiert Hauptfenster mit Menüleiste
+  - Lädt Projekt-Explorer und Tab-System
   - Verbindet Frontend und Backend
+  - Dark/Light Mode Support
 
 ---
 
@@ -141,11 +143,12 @@ Das Programm folgt einer **3-Schicht-Architektur**:
 
 #### `backend/service/memory_service.py`
 - **Aufgabe**: Verwaltung des Systemzustands (Snapshot-System)
+- **Status**: ⚠️ Aktuell nicht aktiv (auskommentiert in orchestrator_service.py)
 - **Funktionen**:
   - Speicherung von Eingabedaten
   - Caching von Berechnungsergebnissen
   - Versionierung der Systemzustände
-- **Wichtig für**: Hot-Reload und Undo-Funktionalität
+- **Hinweis**: Wird für zukünftige Undo/Redo-Funktion benötigt
 
 #### `backend/service/project_service.py`
 - **Aufgabe**: Projekt-Management
@@ -386,7 +389,7 @@ Anzeige-Module
 
 ```
 Statikprogramm/
-├── main.py                          # Programmeinstieg
+├── main_v2.py                       # Programmeinstieg
 ├── frontend/
 │   ├── gui/
 │   │   └── eingabemaske.py         # Hauptfenster
@@ -401,7 +404,7 @@ Statikprogramm/
 │   ├── service/
 │   │   ├── orchestrator_service.py # Haupt-Orchestrator ⭐
 │   │   ├── calculation_service.py  # Berechnungs-Service
-│   │   ├── memory_service.py       # Snapshot-Verwaltung
+│   │   ├── memory_service.py       # Snapshot-Verwaltung (inaktiv)
 │   │   ├── project_service.py      # Projekt-Management
 │   │   └── validation_service.py   # Validierung
 │   ├── calculations/
@@ -410,10 +413,13 @@ Statikprogramm/
 │   │   ├── lastenkombination.py    # GZT-Kombinationen
 │   │   ├── lastkombination_gzg.py  # GZG-Kombinationen
 │   │   └── nachweis_ec5.py         # EC5-Nachweise ⭐
-│   └── database/
-│       └── datenbank_holz.py       # Materialdatenbank ⭐
-├── project_memory/                  # Gespeicherte Projekte
-└── tests/                           # Unit-Tests
+│   ├── database/
+│   │   └── datenbank_holz.py       # Materialdatenbank ⭐
+│   └── project/
+│       ├── project_manager.py      # Projekt-Verwaltung
+│       ├── position_model.py       # Position-Datenmodell
+│       └── settings_manager.py     # App-Einstellungen
+└── Projekte/                        # Benutzer-Projekte (außerhalb Git)
 
 ⭐ = Kern-Module
 ```
@@ -461,27 +467,30 @@ Das Programm basiert auf folgenden Normen:
 ## 📝 Hinweise für Entwickler
 
 ### Wichtige Einstiegspunkte:
-1. **`main.py`**: Programmstart
+1. **`main_v2.py`**: Programmstart
 2. **`orchestrator_service.py`**: Berechnungsablauf verstehen
 3. **`feebb_schnittstelle_ec.py`**: Pattern-Loading-Logik
 4. **`nachweis_ec5.py`**: Nachweisführung
 5. **`datenbank_holz.py`**: Materialdaten
+6. **`theme_config.py`**: Dark/Light Mode
+7. **`latex_renderer.py`**: LaTeX-Rendering
 
 ### Code-Konventionen:
 - Docstrings für alle Funktionen/Klassen
 - Type-Hints wo möglich
 - Logging für Debug-Zwecke
 - Kommentare bei komplexer Logik
+- Threading für GUI-responsiveness
 
 ### Testing:
-- Unit-Tests im `tests/`-Verzeichnis
 - Manuelle Tests über GUI
 - Vergleich mit Handrechnungen
+- Visual Testing (LaTeX-Rendering)
 
 ---
 
 **Erstellt**: 2025-01-22  
-**Version**: 1.0  
+**Letztes Update**: 2025-10-24  
+**Version**: 2.0.0 (Production Ready)  
 **Autor**: Maximilian Stark  
-**Betreuer**: -  
-**Hochschule**: -  
+**Features**: Multi-Projekt, Dark Mode, LaTeX-Rendering, EC5-Nachweise  

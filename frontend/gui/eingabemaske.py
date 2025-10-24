@@ -13,6 +13,12 @@ from frontend.display.anzeige_system import SystemAnzeiger
 from frontend.display.anzeige_nachweis_ec5 import NachweisEC5Anzeiger
 from frontend.frontend_orchestrator import FrontendOrchestrator
 
+# Theme importieren
+try:
+    from frontend.gui.theme_config import ThemeManager
+except ImportError:
+    ThemeManager = None
+
 # Root-Logger-Verhalten
 logging.basicConfig(
     level=logging.DEBUG,                      # ab welcher Wichtigkeit geloggt wird
@@ -26,10 +32,22 @@ class Eingabemaske:
     def __init__(self, root):
         self.root = root
         self.root.title("Durchlaufträger | Statik-Tool Holzbau")
+
+        # KEIN Theme hier - verursacht Fehler mit aqua-Theme
+        # Wir setzen nur die Fonts in _configure_font_styles()
+
         # Fenster im Vordergrund
         root.attributes("-topmost", True)
         root.focus_force()
         root.after(500, lambda: root.attributes("-topmost", False))
+
+        # Einheitliche Schriftgrößen definieren
+        self.FONT_HEADING = ('', 12, 'bold')  # Überschriften
+        # Normaler Text, Labels, Radiobuttons etc.
+        self.FONT_NORMAL = ('', 10)
+
+        # Style für einheitliche Schriftgrößen konfigurieren
+        self._configure_font_styles()
 
         # Importe
         self.db = datenbank_holz_class()
@@ -131,7 +149,7 @@ class Eingabemaske:
         scroll_container.pack(fill="both", expand=True)
 
         # Canvas erstellen
-        self.canvas = tk.Canvas(scroll_container)
+        self.canvas = tk.Canvas(scroll_container, highlightthickness=0)
         self.canvas.pack(side="left", fill="both", expand=True)
 
         # Scrollbars
@@ -157,10 +175,8 @@ class Eingabemaske:
         self.ausgabe_frame = ttk.Frame(self.content_frame)
         self.ausgabe_frame.grid(row=0, column=1, sticky="nw")
         self.system_anzeiger = SystemAnzeiger(self.ausgabe_frame, self)
-        self.kombi_anzeiger = LastkombiAnzeiger(
-            self.root, self.ausgabe_frame, self, self.db)
-        self.nachweis_anzeiger = NachweisEC5Anzeiger(
-            self.ausgabe_frame, self)
+        self.kombi_anzeiger = LastkombiAnzeiger(self.ausgabe_frame, self)
+        self.nachweis_anzeiger = NachweisEC5Anzeiger(self.ausgabe_frame, self)
         self.orch_front = FrontendOrchestrator(
             self.system_anzeiger,
             self.kombi_anzeiger,
@@ -231,6 +247,39 @@ class Eingabemaske:
             self.canvas.yview_scroll(-1 * int(event.delta / 120), "units")
 
         # Wenn Inhalt breiter ist als erlaubte Fensterbreite → Scrollbar ermöglichen
+
+    def _configure_font_styles(self):
+        """Konfiguriert einheitliche Schriftgrößen für alle Widgets"""
+        style = ttk.Style()
+
+        # NUR FONTS - keine background für aqua-Theme (verursacht Fehler)
+        # LabelFrame Überschriften - größer und fett
+        style.configure('TLabelframe.Label', font=self.FONT_HEADING)
+
+        # Normale Labels - einheitliche Größe
+        style.configure('TLabel', font=self.FONT_NORMAL)
+
+        # Buttons - einheitliche Größe
+        style.configure('TButton', font=self.FONT_NORMAL)
+
+        # Radiobuttons - einheitliche Größe
+        style.configure('TRadiobutton', font=self.FONT_NORMAL)
+
+        # Checkbuttons - einheitliche Größe
+        style.configure('TCheckbutton', font=self.FONT_NORMAL)
+
+        # Für Entry, Combobox, Spinbox: option_add funktioniert besser mit aqua
+        self.root.option_add('*TCombobox*Listbox.font', ('', 10))
+        self.root.option_add('*Entry.font', ('', 10))
+        self.root.option_add('*Spinbox.font', ('', 10))
+
+        # Auch über style versuchen (funktioniert nicht immer mit aqua)
+        try:
+            style.configure('TCombobox', font=('', 10))
+            style.configure('TEntry', font=('', 10))
+            style.configure('TSpinbox', font=('', 10))
+        except:
+            pass
 
     '''Beginn der Eingabemaske'''
 

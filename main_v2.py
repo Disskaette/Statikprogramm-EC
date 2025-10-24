@@ -13,7 +13,7 @@ sys.path.insert(0, str(project_root))
 
 # Logging konfigurieren
 logging.basicConfig(
-    level=logging.INFO,  # DEBUG für Entwicklung, INFO für Produktion
+    level=logging.DEBUG,  # DEBUG für Entwicklung, INFO für Produktion
     format="%(asctime)s %(levelname)-8s %(name)s: %(message)s",
     datefmt="%H:%M:%S"
 )
@@ -28,13 +28,14 @@ logger = logging.getLogger(__name__)
 def register_modules():
     """Registriert alle verfügbaren Module"""
     from frontend.modules.module_registry import get_registry
-    from frontend.modules.modul_durchlauftraeger_simple import ModulDurchlauftraegerSimple
+    from frontend.modules.modul_durchlauftraeger import ModulDurchlauftraeger
+    # from frontend.modules.modul_durchlauftraeger_simple import ModulDurchlauftraegerSimple
     
     registry = get_registry()
     
-    # Durchlaufträger-Modul (vereinfacht)
+    # Durchlaufträger-Modul (vollständig mit Eingabemaske)
     registry.register_module(
-        ModulDurchlauftraegerSimple,
+        ModulDurchlauftraeger,
         enabled=True,
         order=1,
         category="Berechnungen"

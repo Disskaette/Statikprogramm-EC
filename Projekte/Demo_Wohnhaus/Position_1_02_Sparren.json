@@ -1,8 +1,8 @@
 {
-  "position_nummer": "1",
+  "position_nummer": "1.02",
   "position_name": "Sparren",
-  "created": "2025-10-23T16:59:15.372084",
-  "last_modified": "2025-10-23T16:59:15.373057",
+  "created": "2025-10-24T18:13:48.214229",
+  "last_modified": "2025-10-24T18:13:48.215221",
   "active_module": "durchlauftraeger",
   "modules": {
     "durchlauftraeger": null,

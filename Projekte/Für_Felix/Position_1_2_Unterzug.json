@@ -1,0 +1,12 @@
+{
+  "position_nummer": "1.2",
+  "position_name": "Unterzug",
+  "created": "2025-10-24T18:25:03.488815",
+  "last_modified": "2025-10-24T18:25:03.489461",
+  "active_module": "durchlauftraeger",
+  "modules": {
+    "durchlauftraeger": null,
+    "brandschutz": null,
+    "auflager": null
+  }
+}

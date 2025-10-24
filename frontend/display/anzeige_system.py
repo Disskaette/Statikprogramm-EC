@@ -116,6 +116,18 @@ class SystemAnzeiger:
             matplotlib.use('Agg')  # Non-interactive backend
             import matplotlib.pyplot as plt  # Import hierher verlagert
 
+            # WICHTIG: Nutze die TATSÄCHLICHE ttk-Textfarbe!
+            from frontend.gui.theme_config import ThemeManager
+            from frontend.gui.latex_renderer import tkcolor_to_hex
+
+            style = ttk.Style(self.eingabemaske.root)
+            fg_ttk = style.lookup('TLabel', 'foreground')
+            if fg_ttk:
+                text_color = tkcolor_to_hex(self.eingabemaske.root, fg_ttk)
+            else:
+                # Fallback: System-Farbe
+                text_color = '#000000' if ThemeManager._current_mode == 'light' else '#E0E0E0'
+
             # Entpacke die vorbereiteten Daten
             segments = plot_data["segments"]
             auflager_pos = plot_data["auflager_pos"]
@@ -123,20 +135,22 @@ class SystemAnzeiger:
             traeger_ende = plot_data["traeger_ende"]
 
             fig, ax = plt.subplots(figsize=(8, 2))
-            
+            fig.patch.set_visible(False)  # Transparenter Hintergrund
+
             # Normalisierung: Trägerlänge auf feste Darstellungslänge mappen
             DISPLAY_LENGTH = 10.0  # Feste Darstellungslänge
             traeger_laenge_real = traeger_ende - traeger_start
-            
+
             if traeger_laenge_real > 0:
                 # Normalisierungsfaktor: real -> display
                 norm_factor = DISPLAY_LENGTH / traeger_laenge_real
-                
+
                 # Normalisiere alle Positionen
                 traeger_start_norm = 0.0
                 traeger_ende_norm = DISPLAY_LENGTH
-                auflager_pos_norm = [(x - traeger_start) * norm_factor for x in auflager_pos]
-                
+                auflager_pos_norm = [(x - traeger_start)
+                                     * norm_factor for x in auflager_pos]
+
                 # Normalisiere Segment-Positionen
                 segments_norm = []
                 for seg in segments:
@@ -144,7 +158,8 @@ class SystemAnzeiger:
                         'label': seg['label'],
                         'start': (seg['start'] - traeger_start) * norm_factor,
                         'end': (seg['end'] - traeger_start) * norm_factor,
-                        'len': seg['len']  # Reale Länge für Beschriftung beibehalten
+                        # Reale Länge für Beschriftung beibehalten
+                        'len': seg['len']
                     })
             else:
                 # Fallback bei leerem System
@@ -152,46 +167,47 @@ class SystemAnzeiger:
                 traeger_ende_norm = DISPLAY_LENGTH
                 auflager_pos_norm = []
                 segments_norm = []
-            
-            # Trägerlinie zeichnen (immer gleich lang)
-            ax.plot([traeger_start_norm, traeger_ende_norm], [1, 1], color='black', linewidth=2)
+
+            # Trägerlinie zeichnen (immer gleich lang) - mit Theme-Farbe
+            ax.plot([traeger_start_norm, traeger_ende_norm],
+                    [1, 1], color=text_color, linewidth=2)
 
             # Feste Auflagergrößen (nicht skaliert)
             dreieck_breite = 0.2
             festlager_breite = 0.3
             loslager_breite = 0.25
-            
-            # Auflager zeichnen (an normalisierten Positionen)
+
+            # Auflager zeichnen (an normalisierten Positionen) - mit Theme-Farbe
             for i, x_norm in enumerate(auflager_pos_norm):
                 is_fixed = (i == 0 and not any(
                     seg['label'] == 'Kragarm links' for seg in segments))
 
                 # Dreieck (Spitze jetzt exakt auf dem Träger)
                 ax.plot([x_norm, x_norm-dreieck_breite, x_norm+dreieck_breite, x_norm], [1.0, 0.6, 0.6, 1.0],
-                        color='black', linewidth=1.5)
+                        color=text_color, linewidth=1.5)
                 ax.text(x_norm, 1.08, chr(65+i), ha='center',
-                        va='bottom', fontsize=12)
+                        va='bottom', fontsize=12, color=text_color)
 
                 if is_fixed:
                     # Festlager: Linie auf gleicher Höhe wie Dreieckbasis, länger
                     ax.plot([x_norm-festlager_breite, x_norm+festlager_breite], [0.6, 0.6],
-                            color='black', linewidth=1.5)
+                            color=text_color, linewidth=1.5)
                 else:
                     # Loslager: Längere Linie mit Abstand unter dem Dreieck
                     ax.plot([x_norm-loslager_breite, x_norm+loslager_breite], [0.5, 0.5],
-                            color='black', linewidth=1.5)
+                            color=text_color, linewidth=1.5)
 
-            # Bemaßung und Beschriftung für jedes Segment (mit normalisierten Koordinaten)
+            # Bemaßung und Beschriftung für jedes Segment (mit normalisierten Koordinaten) - mit Theme-Farbe
             label_pos_high = False  # Flag für alternierende Position
             for seg in segments_norm:
                 x1_norm, x2_norm = seg['start'], seg['end']
                 # Bemaßungspfeil (tiefer gesetzt)
                 ax.annotate('', xy=(x1_norm, 0.2), xytext=(x2_norm, 0.2), arrowprops=dict(
-                    arrowstyle='<->', lw=1.2, color='black'))
+                    arrowstyle='<->', lw=1.2, color=text_color))
 
                 # Bemaßungstext (ganz unten) - mit realer Länge
                 ax.text(
-                    (x1_norm+x2_norm)/2, 0.1, f"{seg['len']:.2f} m", ha='center', va='top', fontsize=11)
+                    (x1_norm+x2_norm)/2, 0.1, f"{seg['len']:.2f} m", ha='center', va='top', fontsize=11, color=text_color)
 
                 # Logik für Beschriftungsposition
                 y_pos = 1.05  # Standard-Position über dem Balken
@@ -209,7 +225,7 @@ class SystemAnzeiger:
                 # Kragarme werden nicht beschriftet
                 if 'Kragarm' not in seg['label']:
                     ax.text((x1_norm+x2_norm)/2, y_pos,
-                            seg['label'], ha='center', va='bottom', fontsize=10)
+                            seg['label'], ha='center', va='bottom', fontsize=10, color=text_color)
 
             ax.axis('off')
             ax.set_aspect('equal')
@@ -217,7 +233,8 @@ class SystemAnzeiger:
             ax.set_ylim(0, 1.8)  # Y-Limit erhöht für mehr Platz
 
             buf = io.BytesIO()
-            fig.savefig(buf, format='png', bbox_inches='tight', dpi=100)
+            fig.savefig(buf, format='png', bbox_inches='tight',
+                        dpi=100, transparent=True)  # Transparent!
             plt.close(fig)  # Wichtig: Figur schließen, um Speicher freizugeben
             buf.seek(0)
 

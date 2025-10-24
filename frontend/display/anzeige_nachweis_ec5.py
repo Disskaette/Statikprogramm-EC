@@ -18,7 +18,15 @@ class NachweisEC5Anzeiger:
             self.eingabemaske, self.db)
         self.tk_images = []  # Wichtig: Referenzen auf Bilder halten
 
+        # LaTeX-Cache für Light/Dark Varianten
+        from frontend.gui.latex_renderer import LaTeXImageCache
+        from frontend.gui.theme_config import ThemeManager
+        self.latex_cache = LaTeXImageCache()
+        # Aktuellen Mode vom ThemeManager holen
+        self._current_mode = ThemeManager._current_mode
+
         # Frames für die Anzeige erstellen (analog zur Lastenkombination)
+        # WICHTIG: ttk.Frame nutzt automatisch richtige Theme-Farbe!
         self.frame_biegung = ttk.LabelFrame(
             self.parent, text="Biegungsnachweis", padding=10)
         self.frame_biegung.pack(fill="both", expand=True, padx=10, pady=10)
@@ -86,7 +94,8 @@ class NachweisEC5Anzeiger:
             else:
                 parent_frame = self.latex_frame_biegung  # Fallback
 
-            label = tk.Label(parent_frame, image=tk_bild, bg="white")
+            # ttk.Label nutzt automatisch richtige Theme-Farbe!
+            label = ttk.Label(parent_frame, image=tk_bild)
             label.image = tk_bild
             label.pack(anchor="w", pady=2)
 
@@ -110,30 +119,38 @@ class NachweisEC5Anzeiger:
             widget.destroy()
 
     def render_latex_to_image(self, latex_str):
-        """Rendert LaTeX-String zu PIL-Image (Frontend-Methode)."""
+        """Rendert LaTeX MIT TRANSPARENZ (wie Systemanzeige)."""
         try:
-            # Matplotlib nur im Haupt-Thread importieren
-            import matplotlib
-            matplotlib.use('Agg')  # Thread-sicherer Backend
-            import matplotlib.pyplot as plt
-            from PIL import Image
-            from io import BytesIO
+            from frontend.gui.latex_renderer import render_latex_transparent, tkcolor_to_hex
+            from frontend.gui.theme_config import ThemeManager
 
-            fig, ax = plt.subplots(figsize=(4, 0.05), dpi=200)
-            fig.patch.set_visible(False)
-            ax.axis("off")
+            # WICHTIG: Nutze die TATSÄCHLICHE ttk-Textfarbe, nicht ThemeManager!
+            style = ttk.Style(self.root)
+            fg_ttk = style.lookup('TLabel', 'foreground')
+            if fg_ttk:
+                fg_hex = tkcolor_to_hex(self.root, fg_ttk)
+            else:
+                # Fallback: System-Farbe (schwarz in Light, weiß in Dark)
+                fg_hex = '#000000' if ThemeManager._current_mode == 'light' else '#E0E0E0'
 
-            ax.text(0.01, 0.5, latex_str,
-                    fontsize=5, va="center", ha="left")
+            mode = ThemeManager._current_mode
 
-            buf = BytesIO()
-            plt.savefig(buf, format="png", bbox_inches="tight",
-                        pad_inches=0.05, transparent=True)
-            plt.close(fig)
+            # Aus Cache holen oder neu rendern
+            cache_key_bg = "transparent"
+            img = self.latex_cache.get(latex_str, mode, cache_key_bg, fg_hex)
 
-            buf.seek(0)
-            return Image.open(buf)
+            if img is None:
+                # Neu rendern: MIT TRANSPARENZ (hohe Qualität!)
+                img = render_latex_transparent(
+                    latex_str, fg_hex, dpi=200, fontsize=5)
+                if img:
+                    self.latex_cache.put(
+                        latex_str, mode, cache_key_bg, fg_hex, img)
+                    logger.debug(
+                        f"LaTeX transparent gerendert & gecacht: mode={mode}, fg={fg_hex}")
+
+            return img
 
         except Exception as e:
-            logger.error(f"Fehler beim LaTeX-Rendering: {e}")
+            logger.error(f"Fehler beim LaTeX-Rendering: {e}", exc_info=True)
             return None

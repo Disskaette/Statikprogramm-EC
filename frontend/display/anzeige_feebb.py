@@ -89,6 +89,10 @@ class FeebbAnzeiger:
             return
 
     def plot_schnittkraefte(self):
+        # Theme für Matplotlib konfigurieren (Dark Mode Support)
+        from frontend.gui.theme_config import ThemeManager
+        ThemeManager.configure_matplotlib()
+        
         # Direkter Zugriff auf Schnittgrößen-Daten (ohne system_memory)
         schnittgroessen = self.eingabemaske.snapshot.get("Schnittgroessen", {})
         schnitt_gzt = schnittgroessen.get("GZT")
