@@ -1,0 +1,12 @@
+{
+  "position_nummer": "Twest 67",
+  "position_name": "Geiler Hase",
+  "created": "2025-10-24T21:32:24.231220",
+  "last_modified": "2025-10-24T21:32:24.232100",
+  "active_module": "durchlauftraeger",
+  "modules": {
+    "durchlauftraeger": null,
+    "brandschutz": null,
+    "auflager": null
+  }
+}

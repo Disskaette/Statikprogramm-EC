@@ -49,23 +49,92 @@ Das Programm folgt einer **3-Schicht-Architektur**:
 - **Aufgabe**: Programmstart und Haupt-GUI-Initialisierung
 - **Funktionen**:
   - Startet die Tkinter-GUI
-  - Initialisiert Hauptfenster mit Menüleiste
+  - Initialisiert `MainWindow`
   - Lädt Projekt-Explorer und Tab-System
-  - Verbindet Frontend und Backend
   - Dark/Light Mode Support
+- **Workflow**: `main_v2.py` → `MainWindow` → Projekt-Explorer + Tab-System
 
 ---
 
 ### **2. FRONTEND (GUI-Layer)**
 
+#### **2.1 Hauptfenster & Navigation**
+
+#### `frontend/gui/main_window.py`
+- **Aufgabe**: **Zentrale GUI-Koordination und Hauptfenster** ⭐
+- **Funktionen**:
+  - Menüleiste (Datei, Projekt, Ansicht, Hilfe)
+  - Koordiniert Projekt-Explorer und Tab-System
+  - Window-Management (Größe, Position, Theme)
+  - Verbindet Frontend und Backend-Services
+- **Wichtige Klasse**: `MainWindow`
+- **Layout**: Splitscreen (Explorer links | Tabs rechts)
+
+#### `frontend/gui/project_explorer.py`
+- **Aufgabe**: **Projekt- und Positions-Browser (TreeView)**
+- **Funktionen**:
+  - Hierarchische Darstellung: Projekt → Positionen
+  - Doppelklick zum Öffnen einer Position
+  - Kontextmenü (Löschen, Umbenennen)
+  - "+ Neue Position" Button
+- **Wichtige Klasse**: `ProjectExplorer`
+- **Besonderheit**: TreeView-basierte Navigation
+
+#### `frontend/gui/position_tabs.py`
+- **Aufgabe**: **Tab-Manager für Positionen (Level 1)**
+- **Funktionen**:
+  - Verwaltet mehrere geöffnete Positionen als Tabs
+  - Jeder Tab = eine Position (z.B. "Deckenträger", "Stütze")
+  - Tab-Switching und -Schließen
+  - Willkommens-Tab bei Programmstart
+- **Wichtige Klasse**: `PositionTabManager`
+- **Struktur**: Projekt → **Positionen (Tabs Level 1)** → Module (Tabs Level 2)
+
+#### `frontend/gui/module_tabs.py`
+- **Aufgabe**: **Tab-Manager für Module (Level 2)**
+- **Funktionen**:
+  - Innerhalb einer Position: Tabs für verschiedene Module
+  - Module: Durchlaufträger, Brandschutz, Auflager, etc.
+  - Lädt und speichert Modul-Daten automatisch
+  - Dynamisches Laden über Module-Registry
+- **Wichtige Klasse**: `ModuleTabManager`
+- **Struktur**: Position → **Module (Tabs Level 2)** → Eingabemaske/Anzeigen
+
+#### `frontend/gui/welcome_dialog.py`
+- **Aufgabe**: **Willkommens-Dialog beim Programmstart**
+- **Funktionen**:
+  - Optionen: Neues Projekt, Projekt öffnen
+  - Recent Projects Liste
+  - Quickstart-Option
+- **Wichtige Klasse**: `WelcomeDialog`
+- **Besonderheit**: Modaler Dialog, blockiert Hauptfenster
+
+#### `frontend/gui/eingabemaske_wrapper.py`
+- **Aufgabe**: Integration der alten Eingabemaske in das neue Tab-System
+- **Funktionen**:
+  - `MockRoot`: Simuliert Root-Fenster für Frame-Betrieb
+  - Delegiert Window-Methoden (title, attributes, etc.)
+  - Ermöglicht Eingabemaske als eingebettetes Widget
+- **Wichtige Klasse**: `EingabemaskeWrapper`, `MockRoot`
+- **Hinweis**: Bridge zwischen alter und neuer Architektur
+
+---
+
+#### **2.2 Berechnungs-Eingabe**
+
 #### `frontend/gui/eingabemaske.py`
-- **Aufgabe**: Hauptfenster für Benutzereingaben
+- **Aufgabe**: Eingabeformular für Berechnungen (Legacy-Modul)
 - **Funktionen**:
   - Eingabe von Spannweiten, Querschnitt, Material
   - Verwaltung von Lastfällen (G, S, W, etc.)
   - Navigation zu Berechnungs- und Anzeigeseiten
   - Speichern/Laden von Projekten
 - **Wichtige Klasse**: `Eingabemaske`
+- **Status**: Wird über `EingabemaskeWrapper` in neues System integriert
+
+---
+
+#### **2.3 Ergebnis-Anzeigen**
 
 #### `frontend/display/anzeige_system.py`
 - **Aufgabe**: Graphische Darstellung der Systemgeometrie
@@ -151,11 +220,12 @@ Das Programm folgt einer **3-Schicht-Architektur**:
 - **Hinweis**: Wird für zukünftige Undo/Redo-Funktion benötigt
 
 #### `backend/service/project_service.py`
-- **Aufgabe**: Projekt-Management
+- **Aufgabe**: Service-Layer für Projekt-Management (Legacy)
 - **Funktionen**:
   - Speichern von Projekten (JSON)
   - Laden von Projekten
   - Projektvalidierung
+- **Status**: Wird größtenteils von `backend/project/project_manager.py` ersetzt
 
 #### `backend/service/validation_service.py`
 - **Aufgabe**: Eingabevalidierung
@@ -232,7 +302,60 @@ Das Programm folgt einer **3-Schicht-Architektur**:
 
 ---
 
-#### **3.3 Datenbankmodul**
+#### **3.3 Projektmanagement**
+
+#### `backend/project/project_manager.py`
+- **Aufgabe**: **Zentrale Verwaltung von Projekten und Positionen** ⭐
+- **Funktionen**:
+  - Projekt erstellen/öffnen/schließen
+  - Position erstellen/löschen/umbenennen
+  - Dateipersistenz (project.json, Position_*.json)
+  - Verwaltung des Projektordners (./Projekte)
+  - Aktualisierung der Projekt-Metadaten
+- **Wichtige Klasse**: `ProjectManager`
+- **Datenstruktur**:
+  ```
+  Projekte/
+  └── MeinProjekt/
+      ├── project.json          # Projekt-Metadaten
+      ├── Position_1.1.json     # Position 1.1
+      └── Position_1.2.json     # Position 1.2
+  ```
+
+#### `backend/project/position_model.py`
+- **Aufgabe**: **Datenmodell für statische Positionen**
+- **Funktionen**:
+  - Speichert Metadaten (Nummer, Name, Zeitstempel)
+  - Verwaltet Modul-Daten (durchlauftraeger, brandschutz, etc.)
+  - Serialisierung (to_dict/from_dict)
+  - Generierung von Anzeigenamen und Dateinamen
+- **Wichtige Klasse**: `PositionModel` (Dataclass)
+- **Struktur**:
+  ```python
+  PositionModel:
+    - position_nummer: "1.1"
+    - position_name: "Deckenträger"
+    - active_module: "durchlauftraeger"
+    - modules: {
+        "durchlauftraeger": {...},
+        "brandschutz": {...}
+      }
+  ```
+
+#### `backend/project/settings_manager.py`
+- **Aufgabe**: Verwaltung von Anwendungseinstellungen
+- **Funktionen**:
+  - Recent Projects Liste
+  - Fenstergeometrie speichern/laden
+  - UI-Präferenzen (Theme, Explorer-Breite)
+  - Auto-Save Einstellungen
+  - Persistierung in config/settings.json
+- **Wichtige Klasse**: `SettingsManager`
+- **Daten**: Recent Projects, Last Opened Project/Position, Window Geometry
+
+---
+
+#### **3.4 Datenbankmodul**
 
 #### `backend/database/datenbank_holz.py`
 - **Aufgabe**: **Materialdatenbank für Holz**
@@ -256,14 +379,28 @@ Das Programm folgt einer **3-Schicht-Architektur**:
 
 ## 🔄 Berechnungsablauf (Workflow)
 
+### **Phase 0: Projekt-Setup** (Neu!)
+```
+Programmstart → Welcome-Dialog
+├─ Option wählen: Neues Projekt / Öffnen / Recent
+└─ MainWindow öffnet sich
+
+Hauptfenster:
+├─ Links: Project Explorer (TreeView)
+│   └─ Projekt → Positionen
+└─ Rechts: Tab-System (2 Ebenen)
+    ├─ Level 1: Position-Tabs (z.B. "Pos 1.1 Deckenträger")
+    └─ Level 2: Modul-Tabs (Durchlaufträger, Brandschutz, etc.)
+```
+
 ### **Phase 1: Eingabe** (Frontend)
 ```
-Benutzer → Eingabemaske
+Benutzer → Position-Tab → Modul-Tab → Eingabemaske
 ├─ Geometrie (Spannweiten, Kragarme)
 ├─ Querschnitt (b, h)
 ├─ Material (z.B. GL24h)
 ├─ Lastfälle (G, S, W, etc.)
-└─ Speichern im Snapshot
+└─ Auto-Save in Position_*.json
 ```
 
 ### **Phase 2: Orchestrierung** (Backend)
@@ -389,23 +526,31 @@ Anzeige-Module
 
 ```
 Statikprogramm/
-├── main_v2.py                       # Programmeinstieg
+├── main_v2.py                       # Programmeinstieg ⭐
 ├── frontend/
-│   ├── gui/
-│   │   └── eingabemaske.py         # Hauptfenster
-│   ├── display/
+│   ├── gui/                         # GUI-Komponenten (Neu!)
+│   │   ├── main_window.py          # Hauptfenster & Koordination ⭐
+│   │   ├── project_explorer.py     # Projekt-Browser (TreeView) ⭐
+│   │   ├── position_tabs.py        # Position-Tab-Manager (Level 1) ⭐
+│   │   ├── module_tabs.py          # Modul-Tab-Manager (Level 2) ⭐
+│   │   ├── welcome_dialog.py       # Willkommens-Dialog
+│   │   ├── eingabemaske_wrapper.py # Wrapper für alte Eingabemaske
+│   │   ├── eingabemaske.py         # Eingabeformular (Legacy)
+│   │   ├── theme_config.py         # Dark/Light Mode
+│   │   └── latex_renderer.py       # LaTeX-Rendering
+│   ├── display/                     # Ergebnis-Anzeigen
 │   │   ├── anzeige_system.py       # Systemdarstellung
 │   │   ├── anzeige_feebb.py        # Schnittgrößen
 │   │   ├── anzeige_lastkombination.py  # Kombinationen
 │   │   └── anzeige_nachweis_ec5.py # EC5-Nachweise
-│   └── frontend_orchestrator.py    # Frontend-Koordination
+│   └── frontend_orchestrator.py    # Frontend-Koordination (Legacy)
 ├── backend/
 │   ├── api.py                       # API-Endpunkte
 │   ├── service/
 │   │   ├── orchestrator_service.py # Haupt-Orchestrator ⭐
 │   │   ├── calculation_service.py  # Berechnungs-Service
 │   │   ├── memory_service.py       # Snapshot-Verwaltung (inaktiv)
-│   │   ├── project_service.py      # Projekt-Management
+│   │   ├── project_service.py      # Projekt-Management (Legacy)
 │   │   └── validation_service.py   # Validierung
 │   ├── calculations/
 │   │   ├── feebb.py                # Finite-Elemente-Kern ⭐
@@ -415,11 +560,17 @@ Statikprogramm/
 │   │   └── nachweis_ec5.py         # EC5-Nachweise ⭐
 │   ├── database/
 │   │   └── datenbank_holz.py       # Materialdatenbank ⭐
-│   └── project/
-│       ├── project_manager.py      # Projekt-Verwaltung
-│       ├── position_model.py       # Position-Datenmodell
-│       └── settings_manager.py     # App-Einstellungen
+│   └── project/                     # Projektmanagement (Neu!)
+│       ├── project_manager.py      # Projekt-Verwaltung ⭐
+│       ├── position_model.py       # Position-Datenmodell ⭐
+│       └── settings_manager.py     # App-Einstellungen ⭐
+├── config/                          # Anwendungseinstellungen (Neu!)
+│   └── settings.json               # Recent Projects, Window Geometry
 └── Projekte/                        # Benutzer-Projekte (außerhalb Git)
+    └── MeinProjekt/                # Beispiel-Projekt
+        ├── project.json            # Projekt-Metadaten
+        ├── Position_1.1.json       # Position 1.1 Daten
+        └── Position_1.2.json       # Position 1.2 Daten
 
 ⭐ = Kern-Module
 ```
@@ -468,12 +619,16 @@ Das Programm basiert auf folgenden Normen:
 
 ### Wichtige Einstiegspunkte:
 1. **`main_v2.py`**: Programmstart
-2. **`orchestrator_service.py`**: Berechnungsablauf verstehen
-3. **`feebb_schnittstelle_ec.py`**: Pattern-Loading-Logik
-4. **`nachweis_ec5.py`**: Nachweisführung
-5. **`datenbank_holz.py`**: Materialdaten
-6. **`theme_config.py`**: Dark/Light Mode
-7. **`latex_renderer.py`**: LaTeX-Rendering
+2. **`main_window.py`**: GUI-Hauptfenster und Navigation
+3. **`project_manager.py`**: Projekt- und Positionsverwaltung
+4. **`project_explorer.py`**: Projekt-Browser (TreeView)
+5. **`position_tabs.py` / `module_tabs.py`**: 2-Ebenen-Tab-System
+6. **`orchestrator_service.py`**: Berechnungsablauf verstehen
+7. **`feebb_schnittstelle_ec.py`**: Pattern-Loading-Logik
+8. **`nachweis_ec5.py`**: Nachweisführung
+9. **`datenbank_holz.py`**: Materialdaten
+10. **`theme_config.py`**: Dark/Light Mode
+11. **`latex_renderer.py`**: LaTeX-Rendering
 
 ### Code-Konventionen:
 - Docstrings für alle Funktionen/Klassen
@@ -493,4 +648,11 @@ Das Programm basiert auf folgenden Normen:
 **Letztes Update**: 2025-10-24  
 **Version**: 2.0.0 (Production Ready)  
 **Autor**: Maximilian Stark  
-**Features**: Multi-Projekt, Dark Mode, LaTeX-Rendering, EC5-Nachweise  
+**Neue Features (v2.0)**:  
+✅ Multi-Projekt-System mit Projekt-Explorer  
+✅ 2-Ebenen-Tab-System (Positionen → Module)  
+✅ Willkommens-Dialog mit Recent Projects  
+✅ Auto-Save und Einstellungsverwaltung  
+✅ Dark/Light Mode  
+✅ LaTeX-Rendering & EC5-Nachweise  
+✅ Pattern-Loading für Mehrfeldträger  
