@@ -1,7 +1,7 @@
 import tkinter as tk
 from tkinter import ttk
-import logging
 import customtkinter as ctk
+import logging
 
 # Datenbank importieren
 from backend.database.datenbank_holz import datenbank_holz_class
@@ -41,10 +41,17 @@ class Eingabemaske:
         root.focus_force()
         root.after(500, lambda: root.attributes("-topmost", False))
 
-        # Einheitliche Schriftgrößen definieren
-        self.FONT_HEADING = ('', 12, 'bold')  # Überschriften
+        # Einheitliche Schriftgrößen definieren (aus ThemeManager)
+        from frontend.gui.theme_config import ThemeManager
+        fonts = ThemeManager.get_fonts()
+        self.FONT_HEADING = fonts['heading']  # Überschriften (groß, fett)
+        self.FONT_BOLD = fonts['bold']        # Fetter Text (normale Größe)
         # Normaler Text, Labels, Radiobuttons etc.
-        self.FONT_NORMAL = ('', 10)
+        self.FONT_NORMAL = fonts['normal']
+        self.FONT_SMALL = fonts['small']      # Kleiner Text
+
+        # Skalierbare Widget-Größen (alle Originalgrößen werden mit UI_SCALE multipliziert)
+        self.W = ThemeManager.scale  # Abkürzung für skalierte Breiten/Höhen
 
         # Style für einheitliche Schriftgrößen konfigurieren
         self._configure_font_styles()
@@ -84,6 +91,9 @@ class Eingabemaske:
         # Lasteneingabe
         self.lasten_eingaben = []
         self.lasten_frame = None
+        # Maximale Formelbreite (wird von Anzeigen aktualisiert, Startwert aus ThemeManager)
+        from frontend.gui.theme_config import ThemeManager
+        self.max_formula_width = ThemeManager.MAX_DISPLAY_WIDTH
         self.kmod_typ = 'ständig'
         # Plus Button
         self.plus_button = None
@@ -135,6 +145,8 @@ class Eingabemaske:
         self._berechnung_timer_id = None
         self._berechnungsversuche = 0
         self._update_timer = None
+        # Separater Timer für Gebrauchstauglichkeit
+        self._gebrauchstauglichkeit_timer = None
         # Berechnungsmodus
         self.ec_modus_var = None
         # Ladeindikator
@@ -145,19 +157,19 @@ class Eingabemaske:
 
         '''Scrollbar'''
         # Wrapper-Frame für Scrollbereich
-        scroll_container = ttk.Frame(self.root)
+        scroll_container = ctk.CTkFrame(self.root)
         scroll_container.pack(fill="both", expand=True)
 
         # Canvas erstellen
         self.canvas = tk.Canvas(scroll_container, highlightthickness=0)
         self.canvas.pack(side="left", fill="both", expand=True)
 
-        # Scrollbars
-        scrollbar_y = ttk.Scrollbar(
+        # Scrollbars (bleiben tkinter)
+        scrollbar_y = tk.Scrollbar(
             scroll_container, orient="vertical", command=self.canvas.yview)
         scrollbar_y.pack(side="right", fill="y")
 
-        scrollbar_x = ttk.Scrollbar(
+        scrollbar_x = tk.Scrollbar(
             self.root, orient="horizontal", command=self.canvas.xview)
         scrollbar_x.pack(side="bottom", fill="x")
 
@@ -165,14 +177,14 @@ class Eingabemaske:
                               xscrollcommand=scrollbar_x.set)
 
         # Inhalt auf Canvas legen
-        self.content_frame = ttk.Frame(self.canvas)
+        self.content_frame = ctk.CTkFrame(self.canvas)
         self.inner_window = self.canvas.create_window(
             (0, 0), window=self.content_frame, anchor="nw")
 
-        self.eingabe_frame = ttk.Frame(self.content_frame)
+        self.eingabe_frame = ctk.CTkFrame(self.content_frame)
         self.eingabe_frame.grid(row=0, column=0, sticky="nw")
 
-        self.ausgabe_frame = ttk.Frame(self.content_frame)
+        self.ausgabe_frame = ctk.CTkFrame(self.content_frame)
         self.ausgabe_frame.grid(row=0, column=1, sticky="nw")
         self.system_anzeiger = SystemAnzeiger(self.ausgabe_frame, self)
         self.kombi_anzeiger = LastkombiAnzeiger(self.ausgabe_frame, self)
@@ -195,12 +207,22 @@ class Eingabemaske:
             if self.fenster_manuell_verkleinert:
                 return
             self.root.update_idletasks()
-            max_width = 1800
-            max_height = 1000
+            # Nutze MAX_DISPLAY_WIDTH aus ThemeManager + Eingabebereich
+            from frontend.gui.theme_config import ThemeManager
+            max_width = ThemeManager.MAX_DISPLAY_WIDTH + 450  # Kompakt: Eingabe + Anzeige
+            max_height = 800  # Kompakte Höhe
+
+            # Hole tatsächliche Größe, aber begrenze sie
             actual_w = self.content_frame.winfo_reqwidth()
             actual_h = self.content_frame.winfo_reqheight()
-            self.root.geometry(
-                f"{min(actual_w + 20, max_width)}x{min(actual_h + 20, max_height)}")
+
+            # Verwende die kleinere von (tatsächlich, maximal)
+            # mindestens 900px, max 1050px
+            new_w = min(max(actual_w + 20, 900), max_width)
+            new_h = min(max(actual_h + 20, 600),
+                        max_height)  # mindestens 600px
+
+            self.root.geometry(f"{new_w}x{new_h}")
             self.root.after(100, begrenze_fenstergroesse)
 
         '''Programm laden'''
@@ -274,10 +296,11 @@ class Eingabemaske:
         self.root.option_add('*Spinbox.font', ('', 10))
 
         # Auch über style versuchen (funktioniert nicht immer mit aqua)
+        # Nutze skalierte Schriftgrößen
         try:
-            style.configure('TCombobox', font=('', 10))
-            style.configure('TEntry', font=('', 10))
-            style.configure('TSpinbox', font=('', 10))
+            style.configure('TCombobox', font=self.FONT_NORMAL)
+            style.configure('TEntry', font=self.FONT_NORMAL)
+            style.configure('TSpinbox', font=self.FONT_NORMAL)
         except:
             pass
 
@@ -285,78 +308,149 @@ class Eingabemaske:
 
     def setup_gui(self):
         # --- Eingabeframe ---
-        berechnungsmodus_frame = ttk.LabelFrame(
-            self.eingabe_frame, text="Berechnungsmodus", padding=10)
+        berechnungsmodus_frame = ctk.CTkFrame(self.eingabe_frame)
         berechnungsmodus_frame.pack(padx=10, pady=10, fill="x")
+        ctk.CTkLabel(berechnungsmodus_frame, text="Berechnungsmodus",
+                     font=self.FONT_HEADING).pack(pady=5)
 
-        frame_system_eingabe = ttk.LabelFrame(
-            self.eingabe_frame, text="Systemeingabe", padding=10)
+        # Inner frame for grid layout
+        inner_berechnungsmodus = ctk.CTkFrame(berechnungsmodus_frame)
+        inner_berechnungsmodus.pack(padx=10, pady=5, fill="x")
+
+        frame_system_eingabe = ctk.CTkFrame(self.eingabe_frame)
         frame_system_eingabe.pack(padx=10, pady=10, fill="x")
+        ctk.CTkLabel(frame_system_eingabe, text="Systemeingabe",
+                     font=self.FONT_HEADING).pack(pady=5)
+
+        # Inner frame for grid layout
+        inner_system = ctk.CTkFrame(frame_system_eingabe)
+        inner_system.pack(padx=10, pady=5, fill="x")
 
         # Berechnungsmodus-Umschalter
-        # ttk.Separator(berechnungsmodus_frame, orient='horizontal').grid(
-        #     row=3, column=0, columnspan=2, sticky='ew', pady=5)
         self.ec_modus_var = tk.BooleanVar(
             value=False)  # Default: Schnell-Modus
-        mode_frame = ttk.Frame(berechnungsmodus_frame)
-        mode_frame.grid(row=0, column=0, sticky="w")
-        ttk.Radiobutton(mode_frame, text="⚡ Volllast (schnell)",
-                        variable=self.ec_modus_var, value=False,
-                        command=self.on_any_change).pack(side="left", padx=5)
-        ttk.Radiobutton(mode_frame, text="🔬 EC-Kombinatorik (genau)",
-                        variable=self.ec_modus_var, value=True,
-                        command=self.on_any_change).pack(side="left", padx=5)
+        mode_frame = ctk.CTkFrame(inner_berechnungsmodus)
+        mode_frame.grid(row=0, column=0, sticky="w", padx=10)
+        ctk.CTkRadioButton(mode_frame, text="⚡ Volllast (schnell)",
+                           variable=self.ec_modus_var, value=False,
+                           font=self.FONT_NORMAL,
+                           radiobutton_width=self.W(20), radiobutton_height=self.W(20),
+                           border_width_checked=self.W(5), border_width_unchecked=self.W(2),
+                           command=self.on_any_change).pack(side="left", padx=5)
+        ctk.CTkRadioButton(mode_frame, text="🔬 EC-Kombinatorik (genau)",
+                           variable=self.ec_modus_var, value=True,
+                           font=self.FONT_NORMAL,
+                           radiobutton_width=self.W(20), radiobutton_height=self.W(20),
+                           border_width_checked=self.W(5), border_width_unchecked=self.W(2),
+                           command=self.on_any_change).pack(side="left", padx=5)
 
         # Ladeindikator
-        self.loading_label_ph = ttk.Label(
-            berechnungsmodus_frame, text="", foreground="blue")
+        self.loading_label_ph = ctk.CTkLabel(
+            inner_berechnungsmodus, text="", text_color="blue")
         self.loading_label_ph.grid(
             row=0, column=4, columnspan=2, pady=5, padx=30)
-        self.loading_label = ttk.Label(
-            berechnungsmodus_frame, text="", foreground="blue")
+        self.loading_label = ctk.CTkLabel(
+            inner_berechnungsmodus, text="", text_color="blue")
         self.loading_label.grid(row=0, column=6, columnspan=2, pady=5)
 
         # Sprungmaß
-        ttk.Label(frame_system_eingabe, text="Sprungmaß e [m]:").grid(row=0,
-                                                                      column=0, sticky="w")
-        self.sprungmass_entry = ttk.Entry(frame_system_eingabe, width=6)
+        ctk.CTkLabel(inner_system, text="Sprungmaß e [m]:", font=self.FONT_NORMAL).grid(row=0,
+                                                                                        column=0, sticky="w", padx=10)
+        self.sprungmass_entry = ctk.CTkEntry(
+            inner_system, width=self.W(60), height=self.W(28), font=self.FONT_NORMAL)
         self.sprungmass_entry.insert(0, "1.00")
-        self.sprungmass_entry.grid(row=0, column=1, padx=0, pady=2)
+        self.sprungmass_entry.grid(row=0, column=1, padx=5, pady=2)
         self.sprungmass_entry.bind(
             "<KeyRelease>", self.on_any_change)
 
-        # Anzahl Felder
-        ttk.Label(frame_system_eingabe, text="Anzahl Felder (1-5):").grid(row=1,
-                                                                          column=0, sticky="w")
+        # Anzahl Felder mit +/- Buttons
+        ctk.CTkLabel(inner_system, text="Anzahl Felder (1-5):", font=self.FONT_NORMAL).grid(row=1,
+                                                                                            column=0, sticky="w", padx=10)
         self.feldanzahl_var = tk.IntVar(value=1)
-        spinbox = ttk.Spinbox(frame_system_eingabe, from_=1, to=self.max_felder,
-                              textvariable=self.feldanzahl_var, width=5,
-                              command=self.update_spannweitenfelder)
-        spinbox.grid(row=1, column=1, padx=5)
+
+        feld_frame = ctk.CTkFrame(inner_system)
+        feld_frame.grid(row=1, column=1, pady=2)
+
+        def dec_felder():
+            value = self.feldanzahl_var.get()
+            if value > 1:
+                self.feldanzahl_var.set(value - 1)
+                update_buttons()
+                self.update_spannweitenfelder()
+
+        def inc_felder():
+            value = self.feldanzahl_var.get()
+            if value < self.max_felder:
+                self.feldanzahl_var.set(value + 1)
+                update_buttons()
+                self.update_spannweitenfelder()
+
+        self.btn_felder_minus = ctk.CTkButton(
+            feld_frame, text="-", width=self.W(20), height=self.W(20), command=dec_felder,
+            fg_color="#E74C3C", hover_color="#E57373")
+        self.btn_felder_minus.grid(row=0, column=0, padx=2)
+
+        self.lbl_felder_anzahl = ctk.CTkLabel(
+            feld_frame, textvariable=self.feldanzahl_var, width=self.W(20), font=self.FONT_NORMAL)
+        self.lbl_felder_anzahl.grid(row=0, column=1, padx=2)
+
+        self.btn_felder_plus = ctk.CTkButton(
+            feld_frame, text="+", width=self.W(20), height=self.W(20), command=inc_felder,
+            fg_color="#27AE60", hover_color="#81C784")
+        self.btn_felder_plus.grid(row=0, column=2, padx=2)
+
+        def update_buttons():
+            value = self.feldanzahl_var.get()
+            if value <= 1:
+                self.btn_felder_minus.configure(state="disabled")
+            else:
+                self.btn_felder_minus.configure(state="normal")
+
+            if value >= self.max_felder:
+                self.btn_felder_plus.configure(state="disabled")
+            else:
+                self.btn_felder_plus.configure(state="normal")
+
+        update_buttons()
 
         # Kragarm links/rechts
         self.kragarm_links = tk.BooleanVar()
         self.kragarm_rechts = tk.BooleanVar()
-        ttk.Checkbutton(frame_system_eingabe, text="Kragarm links", variable=self.kragarm_links,
-                        command=self.update_spannweitenfelder).grid(row=2, column=0, sticky="w")
-        ttk.Checkbutton(frame_system_eingabe, text="Kragarm rechts", variable=self.kragarm_rechts,
+        ctk.CTkCheckBox(inner_system, text="Kragarm links", variable=self.kragarm_links,
+                        font=self.FONT_NORMAL,
+                        checkbox_width=self.W(20), checkbox_height=self.W(20),
+                        border_width=self.W(2),
+                        command=self.update_spannweitenfelder).grid(row=2, column=0, sticky="w", padx=10)
+        ctk.CTkCheckBox(inner_system, text="Kragarm rechts", variable=self.kragarm_rechts,
+                        font=self.FONT_NORMAL,
+                        checkbox_width=self.W(20), checkbox_height=self.W(20),
+                        border_width=self.W(2),
                         command=self.update_spannweitenfelder).grid(row=2, column=1, sticky="w")
 
         # Spannweiten-Felder
-        self.spannweiten_frame = ttk.LabelFrame(
-            self.eingabe_frame, text="Spannweiten je Feld [m]", padding=10)
+        self.spannweiten_frame = ctk.CTkFrame(self.eingabe_frame)
         self.spannweiten_frame.pack(padx=10, pady=10, fill="x")
+        ctk.CTkLabel(self.spannweiten_frame, text="Spannweiten je Feld [m]",
+                     font=self.FONT_HEADING).pack(pady=5)
+        # Inner frame for grid layout
+        self.spannweiten_inner_frame = ctk.CTkFrame(self.spannweiten_frame)
+        self.spannweiten_inner_frame.pack(padx=10, pady=5, fill="x")
         self.spannweiten_eingaben = []
         self.update_spannweitenfelder()
 
         # --- Lasteneingabe-Feld ---
-        self.lasten_frame = ttk.LabelFrame(
-            self.eingabe_frame, text="Lasten [kN/m²]", padding=10)
+        self.lasten_frame = ctk.CTkFrame(self.eingabe_frame)
         self.lasten_frame.pack(padx=10, pady=10, fill="x")
+        ctk.CTkLabel(self.lasten_frame, text="Lasten [kN/m²]",
+                     font=self.FONT_HEADING).pack(pady=5)
+        # Inner frame for grid layout
+        self.lasten_inner_frame = ctk.CTkFrame(self.lasten_frame)
+        self.lasten_inner_frame.pack(padx=10, pady=5, fill="x")
 
         headers = ["", "Lastfall", "q [kN/m²]", "Kategorie", "Kommentar"]
         for i, header in enumerate(headers):
-            ttk.Label(self.lasten_frame, text=header).grid(
+            ctk.CTkLabel(self.lasten_inner_frame, text=header,
+                         font=self.FONT_BOLD).grid(
                 row=0, column=i, padx=5)
 
         self.add_lasteneingabe()
@@ -364,6 +458,10 @@ class Eingabemaske:
         self.querschnitt_eingabe()
         self.gebrauchstauglichkeit_eingabe()
         self.gui_fertig_geladen = True
+
+        # Theme-Callback registrieren für automatische Updates bei Theme-Wechsel
+        from frontend.gui.theme_config import ThemeManager
+        ThemeManager.register_callback(self.update_theme)
 
     def update_spannweitenfelder(self):
         # Aktuelle Werte speichern, bevor Widgets zerstört werden
@@ -377,16 +475,17 @@ class Eingabemaske:
             except:
                 pass
 
-        for widget in self.spannweiten_frame.winfo_children():
+        for widget in self.spannweiten_inner_frame.winfo_children():
             widget.destroy()
 
         self.spannweiten_eingaben = []
         col = 0
 
         if self.kragarm_links.get():
-            ttk.Label(self.spannweiten_frame, text="Kragarm L [m]").grid(
-                row=0, column=col)
-            entry_kragarm_l = ttk.Entry(self.spannweiten_frame, width=7)
+            ctk.CTkLabel(self.spannweiten_inner_frame, text="Kragarm L [m]", font=self.FONT_NORMAL).grid(
+                row=0, column=col, padx=5)
+            entry_kragarm_l = ctk.CTkEntry(
+                self.spannweiten_inner_frame, width=self.W(70), height=self.W(28), font=self.FONT_NORMAL)
             # Gespeicherten Wert wiederherstellen oder Default verwenden
             default_value = temp_memory.get("kragarm_links", "5")
             entry_kragarm_l.insert(0, default_value)
@@ -396,9 +495,10 @@ class Eingabemaske:
             col += 1
 
         for i in range(self.feldanzahl_var.get()):
-            ttk.Label(self.spannweiten_frame,
-                      text=f"Feld {i+1} [m]").grid(row=0, column=col)
-            entry = ttk.Entry(self.spannweiten_frame, width=7)
+            ctk.CTkLabel(self.spannweiten_inner_frame,
+                         text=f"Feld {i+1} [m]", font=self.FONT_NORMAL).grid(row=0, column=col, padx=5)
+            entry = ctk.CTkEntry(
+                self.spannweiten_inner_frame, width=self.W(70), height=self.W(28), font=self.FONT_NORMAL)
             # Gespeicherten Wert wiederherstellen oder Default verwenden
             default_value = temp_memory.get(f"feld_{i+1}", "5")
             entry.insert(0, default_value)
@@ -408,9 +508,10 @@ class Eingabemaske:
             col += 1
 
         if self.kragarm_rechts.get():
-            ttk.Label(self.spannweiten_frame, text="Kragarm R [m]").grid(
-                row=0, column=col)
-            entry_kragarm_r = ttk.Entry(self.spannweiten_frame, width=7)
+            ctk.CTkLabel(self.spannweiten_inner_frame, text="Kragarm R [m]", font=self.FONT_NORMAL).grid(
+                row=0, column=col, padx=5)
+            entry_kragarm_r = ctk.CTkEntry(
+                self.spannweiten_inner_frame, width=self.W(70), height=self.W(28), font=self.FONT_NORMAL)
             # Gespeicherten Wert wiederherstellen oder Default verwenden
             default_value = temp_memory.get("kragarm_rechts", "5")
             entry_kragarm_r.insert(0, default_value)
@@ -431,20 +532,24 @@ class Eingabemaske:
 
         # --- Eingabefelder ---
         lf_var = tk.StringVar(value=self.db.get_sortierte_lastfaelle()[0])
-        lf_combo = ttk.Combobox(self.lasten_frame, textvariable=lf_var,
-                                values=self.db.get_sortierte_lastfaelle(), width=3, state="readonly")
+        lf_combo = ctk.CTkComboBox(self.lasten_inner_frame, variable=lf_var,
+                                   values=self.db.get_sortierte_lastfaelle(), width=self.W(40), height=self.W(28), state="readonly",
+                                   font=self.FONT_NORMAL, command=lambda e: self.on_any_change())
         lf_combo.grid(row=row, column=1, padx=5, pady=2)
 
-        q_entry = ttk.Entry(self.lasten_frame, width=6)
+        q_entry = ctk.CTkEntry(self.lasten_inner_frame,
+                               width=self.W(60), height=self.W(28), font=self.FONT_NORMAL)
         q_entry.grid(row=row, column=2, padx=0, pady=2)
         q_entry.insert(0, "7,41")
 
         lf_detail_var = tk.StringVar()
-        lf_detail_combo = ttk.Combobox(
-            self.lasten_frame, textvariable=lf_detail_var, width=20, state="readonly")
+        lf_detail_combo = ctk.CTkComboBox(
+            self.lasten_inner_frame, variable=lf_detail_var, width=self.W(200), height=self.W(28), state="readonly",
+            font=self.FONT_NORMAL, command=lambda e: self.on_any_change())
         lf_detail_combo.grid(row=row, column=3, padx=5, pady=2)
 
-        kommentar_entry = ttk.Entry(self.lasten_frame, width=10)
+        kommentar_entry = ctk.CTkEntry(
+            self.lasten_inner_frame, width=self.W(100), height=self.W(28), font=self.FONT_NORMAL)
         kommentar_entry.grid(row=row, column=4, padx=5, pady=2)
 
         # Lastfall-Details automatisch setzen (Dropdown aktualisieren bei Änderung)
@@ -467,8 +572,9 @@ class Eingabemaske:
             self.update_plus_button()
 
         if row > 1:
-            remove_button = ttk.Button(
-                self.lasten_frame, text="-", width=1, command=remove)
+            remove_button = ctk.CTkButton(
+                self.lasten_inner_frame, text="-", width=self.W(30), height=self.W(30), command=remove,
+                hover_color="#E57373", corner_radius=6, fg_color="#E74C3C")
             remove_button.grid(row=row, column=0, padx=2)
 
         # --- Eintrag speichern ---
@@ -516,7 +622,8 @@ class Eingabemaske:
         lastfall = lf_var.get()
         kategorien = self.db.get_kategorien_fuer_lastfall(lastfall)
 
-        detail_combo["values"] = kategorien
+        # CustomTkinter-Syntax verwenden (nicht tkinter!)
+        detail_combo.configure(values=kategorien)
         if kategorien:
             detail_var.set(kategorien[0])  # erste Kategorie setzen
         else:
@@ -531,8 +638,9 @@ class Eingabemaske:
             row = len(self.lasten_eingaben) + 1
 
         if len(self.lasten_eingaben) < 5:
-            self.plus_button = ttk.Button(
-                self.lasten_frame, text="+", width=1, command=self.add_lasteneingabe)
+            self.plus_button = ctk.CTkButton(
+                self.lasten_inner_frame, text="+", width=self.W(30), height=self.W(30), command=self.add_lasteneingabe,
+                hover_color="#81C784", corner_radius=6, fg_color="#27AE60")
             self.plus_button.grid(row=row, column=0, pady=(2, 0))
 
         self.nkl_eingabe(row + 1)
@@ -554,61 +662,79 @@ class Eingabemaske:
         if row is None:
             row = len(self.lasten_eingaben) + 2
 
-        self.nkl_label = ttk.Label(self.lasten_frame, text="Nutzungsklasse:")
+        self.nkl_label = ctk.CTkLabel(
+            self.lasten_inner_frame, text="Nutzungsklasse:", font=self.FONT_NORMAL)
         self.nkl_label.grid(row=row, column=1, sticky="w", pady=(10, 0))
         self.nkl_var = tk.StringVar(value="NKL 1")
-        self.nkl_dropdown = ttk.Combobox(self.lasten_frame, textvariable=self.nkl_var,
-                                         values=["NKL 1", "NKL 2", "NKL 3"], state="readonly", width=5)
+        self.nkl_dropdown = ctk.CTkComboBox(self.lasten_inner_frame, variable=self.nkl_var,
+                                            values=["NKL 1", "NKL 2", "NKL 3"], state="readonly", width=self.W(100), height=self.W(28),
+                                            font=self.FONT_NORMAL, command=lambda e: self.on_any_change())
         self.nkl_dropdown.grid(row=row, column=2, pady=(10, 0), sticky="w")
-        self.nkl_dropdown.bind("<<ComboboxSelected>>",
-                               lambda e: self.on_any_change())
         if self.eigengewicht_label is not None:
             self.eigengewicht_label.destroy()
         if self.eigengewicht_checkbutton is not None:
             self.eigengewicht_checkbutton.destroy()
 
-        self.eigengewicht_label = ttk.Label(
-            self.lasten_frame, text="Eigengewicht aktiv:")
+        self.eigengewicht_label = ctk.CTkLabel(
+            self.lasten_inner_frame, text="Eigengewicht aktiv:", font=self.FONT_NORMAL)
         self.eigengewicht_label.grid(row=row+1, column=1, sticky="")
         self.eigengewicht_active = tk.BooleanVar(value=True)
-        self.eigengewicht_checkbutton = ttk.Checkbutton(self.lasten_frame, variable=self.eigengewicht_active,
+        self.eigengewicht_checkbutton = ctk.CTkCheckBox(self.lasten_inner_frame, text="", variable=self.eigengewicht_active,
+                                                        font=self.FONT_NORMAL,
+                                                        checkbox_width=self.W(20), checkbox_height=self.W(20),
+                                                        border_width=self.W(2),
                                                         command=self.on_any_change)
         self.eigengewicht_checkbutton.grid(row=row+1, column=2, sticky="")
 
-        self.radio_lastkombi_1 = ttk.Radiobutton(self.lasten_frame, text="Maßgebender Lastfall", variable=self.anzeige_lastkombis, value=1,
-                                                 command=lambda: self.kombi_anzeiger.update(self.lastkombis))
+        self.radio_lastkombi_1 = ctk.CTkRadioButton(self.lasten_inner_frame, text="Maßgebender Lastfall", variable=self.anzeige_lastkombis, value=1,
+                                                    font=self.FONT_NORMAL,
+                                                    radiobutton_width=self.W(20), radiobutton_height=self.W(20),
+                                                    border_width_checked=self.W(5), border_width_unchecked=self.W(2),
+                                                    command=lambda: self.kombi_anzeiger.update(self.lastkombis))
         self.radio_lastkombi_1.grid(
             row=row, column=4, sticky="w", pady=(0, 0))
-        self.radio_lastkombi_2 = ttk.Radiobutton(self.lasten_frame, text="Alle Lastfälle", variable=self.anzeige_lastkombis, value=2,
-                                                 command=lambda: self.kombi_anzeiger.update(self.lastkombis))
+        self.radio_lastkombi_2 = ctk.CTkRadioButton(self.lasten_inner_frame, text="Alle Lastfälle", variable=self.anzeige_lastkombis, value=2,
+                                                    font=self.FONT_NORMAL,
+                                                    radiobutton_width=self.W(20), radiobutton_height=self.W(20),
+                                                    border_width_checked=self.W(5), border_width_unchecked=self.W(2),
+                                                    command=lambda: self.kombi_anzeiger.update(self.lastkombis))
         self.radio_lastkombi_2.grid(
             row=row+1, column=4, sticky="w", pady=(0, 0))
 
     def schnittgroessen_ausgabe(self):
-        self.schnittgroessen_frame = ttk.LabelFrame(
-            self.eingabe_frame, text="Schnittgrößen", padding=10)
+        self.schnittgroessen_frame = ctk.CTkFrame(self.eingabe_frame)
         self.schnittgroessen_frame.pack(padx=10, pady=10, fill="x")
+        ctk.CTkLabel(self.schnittgroessen_frame, text="Schnittgrößen",
+                     font=self.FONT_HEADING).pack(pady=5)
+
+        # Inner frame for grid layout
+        inner_frame = ctk.CTkFrame(self.schnittgroessen_frame)
+        inner_frame.pack(padx=10, pady=5, fill="x")
 
         headers = ["Bemessungsfall", "My,d [kNm]:",
                    "Vz,d [kN]:", "", "", "Runden auf:"]
         for i, header in enumerate(headers):
-            ttk.Label(self.schnittgroessen_frame, text=header).grid(
-                row=0, column=i, padx=5, sticky="w")
+            ctk.CTkLabel(inner_frame, text=header, font=self.FONT_NORMAL).grid(
+                row=0, column=i, padx=5)
 
-        ttk.Label(self.schnittgroessen_frame, text="Kaltfall [kN]:").grid(
-            row=1, column=0, sticky="w")
-        ttk.Label(self.schnittgroessen_frame, text="Warmfall [kN]:").grid(
-            row=2, column=0, sticky="w")
+        ctk.CTkLabel(inner_frame, text="Kaltfall [kN]:", font=self.FONT_NORMAL).grid(
+            row=1, column=0, sticky="w", padx=5)
+        ctk.CTkLabel(inner_frame, text="Warmfall [kN]:", font=self.FONT_NORMAL).grid(
+            row=2, column=0, sticky="w", padx=5)
 
-        self.max_moment_kalt = ttk.Label(self.schnittgroessen_frame, text="")
+        self.max_moment_kalt = ctk.CTkLabel(
+            inner_frame, text="", font=self.FONT_NORMAL)
         self.max_moment_kalt.grid(row=1, column=1, sticky="w")
-        self.max_querkraft_kalt = ttk.Label(
-            self.schnittgroessen_frame, text="")
+        self.max_querkraft_kalt = ctk.CTkLabel(
+            inner_frame, text="", font=self.FONT_NORMAL)
         self.max_querkraft_kalt.grid(row=1, column=2, sticky="w")
 
         # Schnittgrößenanzeige
         self.schnittgroeßen_anzeige_button = tk.BooleanVar()
-        ttk.Checkbutton(self.schnittgroessen_frame, text="Schnittkraftverläufe anzeigen",
+        ctk.CTkCheckBox(inner_frame, text="Schnittkraftverläufe anzeigen",
+                        font=self.FONT_NORMAL,
+                        checkbox_width=self.W(20), checkbox_height=self.W(20),
+                        border_width=self.W(2),
                         variable=self.schnittgroeßen_anzeige_button, command=self.feebb.toggle_schnittkraftfenster).grid(row=3, column=0, columnspan=2, sticky="w", pady=5)
         # # # Rundungseinstellung
         # self.rundung_var = tk.StringVar(value="0.1")
@@ -617,24 +743,30 @@ class Eingabemaske:
         # rundung_combo.grid(row=1, column=5, sticky="w")
 
     def querschnitt_eingabe(self):
-        self.querschnitt_frame = ttk.LabelFrame(
-            self.eingabe_frame, text="Bemessungsquerschnitt", padding=10)
+        self.querschnitt_frame = ctk.CTkFrame(self.eingabe_frame)
         self.querschnitt_frame.pack(padx=10, pady=10, fill="x")
+        ctk.CTkLabel(self.querschnitt_frame, text="Bemessungsquerschnitt",
+                     font=self.FONT_HEADING).pack(pady=5)
+
+        # Inner frame for grid layout
+        inner_frame = ctk.CTkFrame(self.querschnitt_frame)
+        inner_frame.pack(padx=10, pady=5, fill="x")
+        self.querschnitt_inner_frame = inner_frame  # Speichern für späteren Zugriff
 
         # Materialgruppe 1
-        ttk.Label(self.querschnitt_frame, text="Materialgruppe:").grid(
-            row=0, column=0, sticky="w")
+        ctk.CTkLabel(inner_frame, text="Materialgruppe:", font=self.FONT_NORMAL).grid(
+            row=0, column=0, sticky="w", padx=5)
         gruppen_1 = self.db.get_materialgruppen()
         self.materialgruppe_var_1 = tk.StringVar(value=gruppen_1[0])
-        qs_materialgruppe_combo_1 = ttk.Combobox(self.querschnitt_frame, textvariable=self.materialgruppe_var_1,
-                                                 values=gruppen_1, width=13, state="readonly")
+        qs_materialgruppe_combo_1 = ctk.CTkComboBox(inner_frame, variable=self.materialgruppe_var_1,
+                                                    values=gruppen_1, width=self.W(130), height=self.W(28), state="readonly",
+                                                    font=self.FONT_NORMAL,
+                                                    command=lambda e: (self.update_querschnitt_felder(), self.on_any_change()))
         qs_materialgruppe_combo_1.grid(
-            row=0, column=1, columnspan=2, sticky="w")
-        qs_materialgruppe_combo_1.bind("<<ComboboxSelected>>",
-                                       lambda e: (self.update_querschnitt_felder(), self.on_any_change()))
+            row=0, column=1, columnspan=2, sticky="w", padx=5)
         # Materialgruppe 2
-        ttk.Label(self.querschnitt_frame, text="Materialgruppe:").grid(
-            row=0, column=3, sticky="w")
+        ctk.CTkLabel(inner_frame, text="Materialgruppe:", font=self.FONT_NORMAL).grid(
+            row=0, column=3, sticky="w", padx=5)
         gruppen_2 = self.db.get_materialgruppen()
         self.materialgruppe_var_2 = tk.StringVar(value=gruppen_2[0])
         # qs_materialgruppe_combo_2 = ttk.Combobox(self.querschnitt_frame, textvariable=self.materialgruppe_var_2,
@@ -664,7 +796,8 @@ class Eingabemaske:
 
     def update_querschnitt_felder(self):
         # Lösche nur Widgets ab Zeile 1 (Materialgruppe bleibt erhalten)
-        for widget in self.querschnitt_frame.winfo_children():
+        inner_frame = self.querschnitt_inner_frame
+        for widget in inner_frame.winfo_children():
             try:
                 row = int(widget.grid_info().get("row", -1))
                 if row >= 1:
@@ -676,46 +809,48 @@ class Eingabemaske:
         # materialgruppe_2 = self.materialgruppe_var_2.get()
         # materialgruppe_3 = self.materialgruppe_var_3.get()
 
+        inner_frame = self.querschnitt_inner_frame
+
         if materialgruppe_1 == "Balken":
             # Typauswahl 1
-            ttk.Label(self.querschnitt_frame, text="Typ:").grid(
-                row=1, column=0, sticky="w")
+            ctk.CTkLabel(inner_frame, text="Typ:", font=self.FONT_NORMAL).grid(
+                row=1, column=0, sticky="w", padx=5)
             typen_1 = self.db.get_typen(materialgruppe_1)
             self.querschnitt_var_1 = tk.StringVar(value=typen_1[0])
-            qs_typ_combo_1 = ttk.Combobox(self.querschnitt_frame, textvariable=self.querschnitt_var_1,
-                                          values=typen_1, width=13, state="readonly")
-            qs_typ_combo_1.grid(row=1, column=1, columnspan=2, sticky="w")
-            qs_typ_combo_1.bind("<<ComboboxSelected>>",
-                                self.on_querschnitt_auswahl)
+            qs_typ_combo_1 = ctk.CTkComboBox(inner_frame, variable=self.querschnitt_var_1,
+                                             values=typen_1, width=self.W(130), height=self.W(28), state="readonly",
+                                             font=self.FONT_NORMAL, command=self.on_querschnitt_auswahl)
+            qs_typ_combo_1.grid(
+                row=1, column=1, columnspan=2, sticky="w", padx=5)
             self.querschnitt_var_1.set(typen_1[0])
 
             # Typauswahl 2
-            ttk.Label(self.querschnitt_frame, text="Typ:").grid(
-                row=1, column=3, sticky="w")
+            ctk.CTkLabel(inner_frame, text="Typ:", font=self.FONT_NORMAL).grid(
+                row=1, column=3, sticky="w", padx=5)
             typen_2 = self.db.get_typen(materialgruppe_1)
             self.querschnitt_var_2 = tk.StringVar(value=typen_2[0])
-            qs_typ_combo_2 = ttk.Combobox(self.querschnitt_frame, textvariable=self.querschnitt_var_2,
-                                          values=typen_2, width=13, state="readonly")
-            qs_typ_combo_2.grid(row=1, column=4, columnspan=2, sticky="w")
-            qs_typ_combo_2.bind("<<ComboboxSelected>>",
-                                self.on_querschnitt_auswahl)
+            qs_typ_combo_2 = ctk.CTkComboBox(inner_frame, variable=self.querschnitt_var_2,
+                                             values=typen_2, width=self.W(130), height=self.W(28), state="readonly",
+                                             font=self.FONT_NORMAL, command=self.on_querschnitt_auswahl)
+            qs_typ_combo_2.grid(
+                row=1, column=4, columnspan=2, sticky="w", padx=5)
             self.querschnitt_var_2.set(typen_2[0])
 
             # Typauswahl 3
-            ttk.Label(self.querschnitt_frame, text="Typ:").grid(
-                row=1, column=6, sticky="w")
+            ctk.CTkLabel(inner_frame, text="Typ:", font=self.FONT_NORMAL).grid(
+                row=1, column=6, sticky="w", padx=5)
             typen_3 = self.db.get_typen(materialgruppe_1)
             self.querschnitt_var_3 = tk.StringVar(value=typen_3[0])
-            qs_typ_combo_3 = ttk.Combobox(self.querschnitt_frame, textvariable=self.querschnitt_var_3,
-                                          values=typen_3, width=13, state="readonly")
-            qs_typ_combo_3.grid(row=1, column=7, columnspan=2, sticky="w")
-            qs_typ_combo_3.bind("<<ComboboxSelected>>",
-                                self.on_querschnitt_auswahl)
+            qs_typ_combo_3 = ctk.CTkComboBox(inner_frame, variable=self.querschnitt_var_3,
+                                             values=typen_3, width=self.W(130), height=self.W(28), state="readonly",
+                                             font=self.FONT_NORMAL, command=self.on_querschnitt_auswahl)
+            qs_typ_combo_3.grid(
+                row=1, column=7, columnspan=2, sticky="w", padx=5)
             self.querschnitt_var_3.set(typen_3[0])
 
             # Festigkeitsklasse 1
-            ttk.Label(self.querschnitt_frame, text="Festigkeit:").grid(
-                row=2, column=0, sticky="w")
+            ctk.CTkLabel(inner_frame, text="Festigkeit:", font=self.FONT_NORMAL).grid(
+                row=2, column=0, sticky="w", padx=5)
             typ = self.querschnitt_var_1.get()
 
             festigkeitsklassen_1 = self.db.get_festigkeitsklassen(
@@ -724,16 +859,15 @@ class Eingabemaske:
 
             self.festigkeitsklasse_var_1 = tk.StringVar(
                 value=erste_festigkeit_1)
-            self.qs_festigkeit_combo_1 = ttk.Combobox(self.querschnitt_frame, textvariable=self.festigkeitsklasse_var_1,
-                                                      values=festigkeitsklassen_1, width=13, state="readonly")
+            self.qs_festigkeit_combo_1 = ctk.CTkComboBox(inner_frame, variable=self.festigkeitsklasse_var_1,
+                                                         values=festigkeitsklassen_1, width=self.W(130), height=self.W(28), state="readonly", font=self.FONT_NORMAL,
+                                                         command=self.on_any_change)
             self.qs_festigkeit_combo_1.grid(
-                row=2, column=1, columnspan=5, sticky="w")
-            self.qs_festigkeit_combo_1.bind(
-                "<<ComboboxSelected>>", self.on_any_change)
+                row=2, column=1, columnspan=5, sticky="w", padx=5)
 
             # Festigkeitsklasse 2
-            ttk.Label(self.querschnitt_frame, text="Festigkeit:").grid(
-                row=2, column=3, sticky="w")
+            ctk.CTkLabel(inner_frame, text="Festigkeit:", font=self.FONT_NORMAL).grid(
+                row=2, column=3, sticky="w", padx=5)
             typ = self.querschnitt_var_2.get()
 
             festigkeitsklassen_2 = self.db.get_festigkeitsklassen(
@@ -742,16 +876,15 @@ class Eingabemaske:
 
             self.festigkeitsklasse_var_2 = tk.StringVar(
                 value=erste_festigkeit_var_2)
-            self.qs_festigkeit_combo_2 = ttk.Combobox(self.querschnitt_frame, textvariable=self.festigkeitsklasse_var_2,
-                                                      values=festigkeitsklassen_2, width=13, state="readonly")
+            self.qs_festigkeit_combo_2 = ctk.CTkComboBox(inner_frame, variable=self.festigkeitsklasse_var_2,
+                                                         values=festigkeitsklassen_2, width=self.W(130), height=self.W(28), state="readonly", font=self.FONT_NORMAL,
+                                                         command=self.on_any_change)
             self.qs_festigkeit_combo_2.grid(
-                row=2, column=4, columnspan=2, sticky="w")
-            self.qs_festigkeit_combo_2.bind(
-                "<<ComboboxSelected>>", self.on_any_change)
+                row=2, column=4, columnspan=2, sticky="w", padx=5)
 
             # Festigkeitsklasse 3
-            ttk.Label(self.querschnitt_frame, text="Festigkeit:").grid(
-                row=2, column=6, sticky="w")
+            ctk.CTkLabel(inner_frame, text="Festigkeit:", font=self.FONT_NORMAL).grid(
+                row=2, column=6, sticky="w", padx=5)
             typ = self.querschnitt_var_3.get()
 
             festigkeitsklassen_3 = self.db.get_festigkeitsklassen(
@@ -760,74 +893,88 @@ class Eingabemaske:
 
             self.festigkeitsklasse_var_3 = tk.StringVar(
                 value=erste_festigkeit_var_3)
-            self.qs_festigkeit_combo_3 = ttk.Combobox(self.querschnitt_frame, textvariable=self.festigkeitsklasse_var_3,
-                                                      values=festigkeitsklassen_3, width=13, state="readonly")
+            self.qs_festigkeit_combo_3 = ctk.CTkComboBox(inner_frame, variable=self.festigkeitsklasse_var_3,
+                                                         values=festigkeitsklassen_3, width=self.W(130), height=self.W(28), state="readonly", font=self.FONT_NORMAL,
+                                                         command=self.on_any_change)
             self.qs_festigkeit_combo_3.grid(
-                row=2, column=7, columnspan=2, sticky="w")
-            self.qs_festigkeit_combo_3.bind(
-                "<<ComboboxSelected>>", self.on_any_change)
+                row=2, column=7, columnspan=2, sticky="w", padx=5)
             self.update_festigkeitsklasse_dropdown()
 
             # Checkbox für Querschnittsvariationen
             self.radiobox_var = tk.IntVar()
             self.radiobox_var.set(1)
 
-            ttk.Radiobutton(self.querschnitt_frame, text="Variante 1", variable=self.radiobox_var,
-                            value=1).grid(row=3, column=1, columnspan=2, sticky="w", pady=5)
-            ttk.Radiobutton(self.querschnitt_frame, text="Variante 2", variable=self.radiobox_var,
-                            value=2).grid(row=3, column=4, columnspan=2,  sticky="w", pady=5)
-            ttk.Radiobutton(self.querschnitt_frame, text="Variante 3", variable=self.radiobox_var,
-                            value=3).grid(row=3, column=7, columnspan=2, sticky="w", pady=5)
+            ctk.CTkRadioButton(inner_frame, text="Variante 1", variable=self.radiobox_var,
+                               font=self.FONT_NORMAL,
+                               radiobutton_width=self.W(20), radiobutton_height=self.W(20),
+                               border_width_checked=self.W(5), border_width_unchecked=self.W(2),
+                               value=1).grid(row=3, column=1, columnspan=2, sticky="w", pady=5, padx=5)
+            ctk.CTkRadioButton(inner_frame, text="Variante 2", variable=self.radiobox_var,
+                               font=self.FONT_NORMAL,
+                               radiobutton_width=self.W(20), radiobutton_height=self.W(20),
+                               border_width_checked=self.W(5), border_width_unchecked=self.W(2),
+                               value=2).grid(row=3, column=4, columnspan=2, sticky="w", pady=5, padx=5)
+            ctk.CTkRadioButton(inner_frame, text="Variante 3", variable=self.radiobox_var,
+                               font=self.FONT_NORMAL,
+                               radiobutton_width=self.W(20), radiobutton_height=self.W(20),
+                               border_width_checked=self.W(5), border_width_unchecked=self.W(2),
+                               value=3).grid(row=3, column=7, columnspan=2, sticky="w", pady=5, padx=5)
             # Aktualiserung Bib Checkboxen
             self.radiobox_var.trace_add("write",
                                         lambda *args: self.on_any_change())
 
             # Eingabe Variante 1
-            ttk.Label(self.querschnitt_frame, text="b [mm]:").grid(
-                row=4, column=1, sticky="w")
-            self.b_entry_1 = ttk.Entry(self.querschnitt_frame, width=6)
+            ctk.CTkLabel(inner_frame, text="b [mm]:", font=self.FONT_NORMAL).grid(
+                row=4, column=1, sticky="w", padx=5)
+            self.b_entry_1 = ctk.CTkEntry(
+                inner_frame, width=self.W(60), height=self.W(28), font=self.FONT_NORMAL)
             self.b_entry_1.insert(0, self.b_1)
             self.b_entry_1.grid(row=4, column=2, padx=5, sticky="w")
             self.b_entry_1.bind("<KeyRelease>",
                                 self.on_any_change)
 
-            ttk.Label(self.querschnitt_frame, text="h [mm]:").grid(
-                row=5, column=1, sticky="w")
-            self.h_entry_1 = ttk.Entry(self.querschnitt_frame, width=6)
+            ctk.CTkLabel(inner_frame, text="h [mm]:", font=self.FONT_NORMAL).grid(
+                row=5, column=1, sticky="w", padx=5)
+            self.h_entry_1 = ctk.CTkEntry(
+                inner_frame, width=self.W(60), height=self.W(28), font=self.FONT_NORMAL)
             self.h_entry_1.insert(0, self.h_1)
             self.h_entry_1.grid(row=5, column=2, padx=5, sticky="w")
             self.h_entry_1.bind("<KeyRelease>",
                                 self.on_any_change)
 
             # Eingabe Variante 2
-            ttk.Label(self.querschnitt_frame, text="b [mm]:").grid(
-                row=4, column=4, sticky="w")
-            self.b_entry_2 = ttk.Entry(self.querschnitt_frame, width=6)
+            ctk.CTkLabel(inner_frame, text="b [mm]:", font=self.FONT_NORMAL).grid(
+                row=4, column=4, sticky="w", padx=5)
+            self.b_entry_2 = ctk.CTkEntry(
+                inner_frame, width=self.W(60), height=self.W(28), font=self.FONT_NORMAL)
             self.b_entry_2.insert(0, self.b_2)
             self.b_entry_2.grid(row=4, column=5, padx=5, sticky="w")
             self.b_entry_2.bind("<KeyRelease>",
                                 self.on_any_change)
 
-            ttk.Label(self.querschnitt_frame, text="h [mm]:").grid(
-                row=5, column=4, sticky="w")
-            self.h_entry_2 = ttk.Entry(self.querschnitt_frame, width=6)
+            ctk.CTkLabel(inner_frame, text="h [mm]:", font=self.FONT_NORMAL).grid(
+                row=5, column=4, sticky="w", padx=5)
+            self.h_entry_2 = ctk.CTkEntry(
+                inner_frame, width=self.W(60), height=self.W(28), font=self.FONT_NORMAL)
             self.h_entry_2.insert(0, self.h_2)
             self.h_entry_2.grid(row=5, column=5, padx=5, sticky="w")
             self.h_entry_2.bind("<KeyRelease>",
                                 self.on_any_change)
 
             # Eingabe Variante 3
-            ttk.Label(self.querschnitt_frame, text="b [mm]:").grid(
-                row=4, column=7, sticky="w")
-            self.b_entry_3 = ttk.Entry(self.querschnitt_frame, width=6)
+            ctk.CTkLabel(inner_frame, text="b [mm]:", font=self.FONT_NORMAL).grid(
+                row=4, column=7, sticky="w", padx=5)
+            self.b_entry_3 = ctk.CTkEntry(
+                inner_frame, width=self.W(60), height=self.W(28), font=self.FONT_NORMAL)
             self.b_entry_3.insert(0, self.b_3)
             self.b_entry_3.grid(row=4, column=8, padx=5, sticky="w")
             self.b_entry_3.bind("<KeyRelease>",
                                 self.on_any_change)
 
-            ttk.Label(self.querschnitt_frame, text="h [mm]:").grid(
-                row=5, column=7, sticky="w")
-            self.h_entry_3 = ttk.Entry(self.querschnitt_frame, width=6)
+            ctk.CTkLabel(inner_frame, text="h [mm]:", font=self.FONT_NORMAL).grid(
+                row=5, column=7, sticky="w", padx=5)
+            self.h_entry_3 = ctk.CTkEntry(
+                inner_frame, width=self.W(60), height=self.W(28), font=self.FONT_NORMAL)
             self.h_entry_3.insert(0, self.h_3)
             self.h_entry_3.grid(row=5, column=8, padx=5, sticky="w")
             self.h_entry_3.bind("<KeyRelease>",
@@ -861,20 +1008,26 @@ class Eingabemaske:
         self.on_any_change()
 
     def gebrauchstauglichkeit_eingabe(self):
-        self.gebrauchstauglichkeit_frame = ttk.LabelFrame(
-            self.eingabe_frame, text="Gebrauchstauglichkeit", padding=10)
+        self.gebrauchstauglichkeit_frame = ctk.CTkFrame(self.eingabe_frame)
         self.gebrauchstauglichkeit_frame.pack(padx=10, pady=10, fill="x")
+        ctk.CTkLabel(self.gebrauchstauglichkeit_frame, text="Gebrauchstauglichkeit",
+                     font=self.FONT_HEADING).pack(pady=5)
 
-        ttk.Label(self.gebrauchstauglichkeit_frame, text="Situation:").grid(
-            row=0, column=0, sticky="w")
+        # Inner frame for grid layout
+        inner_frame = ctk.CTkFrame(self.gebrauchstauglichkeit_frame)
+        inner_frame.pack(padx=10, pady=5, fill="x")
+        self.gebrauchstauglichkeit_inner_frame = inner_frame
+
+        ctk.CTkLabel(inner_frame, text="Situation:", font=self.FONT_NORMAL).grid(
+            row=0, column=0, sticky="w", padx=5)
         self.situation_var = tk.StringVar(value="Allgemein")
-        situation_combo = ttk.Combobox(self.gebrauchstauglichkeit_frame, textvariable=self.situation_var,
-                                       values=["Allgemein", "Überhöhte, Untergeordnete Bauteile", "Eigene Werte"], width=25, state="readonly")
-        situation_combo.grid(row=0, column=1, columnspan=5, sticky="w", pady=2)
-        situation_combo.bind("<<ComboboxSelected>>",
-                             self.update_gebrauchstauglichkeit_eingabe)
-        situation_combo.bind("<<ComboboxSelected>>",
-                             self._on_gebrauchstauglichkeit_change, add="+")
+        situation_combo = ctk.CTkComboBox(inner_frame, variable=self.situation_var,
+                                          values=[
+                                              "Allgemein", "Überhöhte, Untergeordnete Bauteile", "Eigene Werte"],
+                                          width=self.W(250), height=self.W(28), state="readonly", font=self.FONT_NORMAL,
+                                          command=lambda choice: (self.update_gebrauchstauglichkeit_eingabe(), self._on_gebrauchstauglichkeit_change()))
+        situation_combo.grid(row=0, column=1, columnspan=5,
+                             sticky="w", pady=2, padx=5)
         self.w_c_überhoehung_wert = "0,00"
         self.update_gebrauchstauglichkeit_eingabe()
 
@@ -886,14 +1039,16 @@ class Eingabemaske:
 
     def update_gebrauchstauglichkeit_eingabe(self, event=None):
         logger.debug("🏗️ Gebrauchstauglichkeitsfenster wird aktualisiert")
-        # Lösche nur Widgets ab Zeile 1 (Materialgruppe bleibt erhalten)
-        for widget in self.gebrauchstauglichkeit_frame.winfo_children():
+        # Lösche nur Widgets ab Zeile 1 (Situation bleibt erhalten)
+        inner_frame = self.gebrauchstauglichkeit_inner_frame
+        for widget in inner_frame.winfo_children():
             try:
                 row = int(widget.grid_info().get("row", -1))
                 if row >= 1:
                     widget.destroy()
             except Exception:
                 pass
+
         if self.situation_var.get() == "Allgemein":
             # Set Grenzwerte Allgemeoin
             self.w_inst_grenz_allgemein = 300
@@ -901,32 +1056,31 @@ class Eingabemaske:
             self.w_net_fin_grenz_allgemein = 300
 
             # Überhöhungseingabe
-            ttk.Label(self.gebrauchstauglichkeit_frame, text="w_c [mm]:", width=12).grid(
-                row=2, column=0, sticky="e", pady=2)
-            self.w_c_überhoehung = ttk.Entry(
-                self.gebrauchstauglichkeit_frame, width=6)
+            ctk.CTkLabel(inner_frame, text="w_c [mm]:", font=self.FONT_NORMAL).grid(
+                row=2, column=0, sticky="w", padx=5)
+            self.w_c_überhoehung = ctk.CTkEntry(
+                inner_frame, width=self.W(60), font=self.FONT_NORMAL)
             self.w_c_überhoehung.insert(0, self.w_c_überhoehung_wert)
-            self.w_c_überhoehung.grid(row=2, column=1, sticky="w", pady=2)
-            self.w_c_überhoehung.bind("<KeyRelease>", self._on_w_c_change,
-                                      self.on_any_change)
+            self.w_c_überhoehung.grid(
+                row=2, column=1, sticky="w", padx=5)
+            self.w_c_überhoehung.bind("<KeyRelease>", self._on_w_c_change)
 
-            self.on_any_change()
             # Ausgabe Grenzwerte
-            ttk.Label(self.gebrauchstauglichkeit_frame, text="w_inst:", width=6).grid(
-                row=3, column=0, sticky="w")
-            ttk.Label(self.gebrauchstauglichkeit_frame, text=f"L / {self.w_inst_grenz_allgemein}", width=6).grid(
-                row=3, column=1, sticky="w")
+            ctk.CTkLabel(inner_frame, text="w_inst:", font=self.FONT_NORMAL).grid(
+                row=3, column=0, sticky="w", padx=5)
+            ctk.CTkLabel(inner_frame, text=f"L / {self.w_inst_grenz_allgemein}", font=self.FONT_NORMAL).grid(
+                row=3, column=1, sticky="w", padx=5)
 
-            ttk.Label(self.gebrauchstauglichkeit_frame, text="w_fin:", width=12).grid(
-                row=4, column=0, sticky="w")
-            ttk.Label(self.gebrauchstauglichkeit_frame, text=f"L / {self.w_fin_grenz_allgemein}", width=6).grid(
-                row=4, column=1, sticky="w")
+            ctk.CTkLabel(inner_frame, text="w_fin:", font=self.FONT_NORMAL).grid(
+                row=4, column=0, sticky="w", padx=5)
+            ctk.CTkLabel(inner_frame, text=f"L / {self.w_fin_grenz_allgemein}", font=self.FONT_NORMAL).grid(
+                row=4, column=1, sticky="w", padx=5)
 
-            ttk.Label(self.gebrauchstauglichkeit_frame, text="w_fin_net:", width=12).grid(
-                row=5, column=0, sticky="w")
-            ttk.Label(self.gebrauchstauglichkeit_frame, text=f"L / {self.w_net_fin_grenz_allgemein}", width=6).grid(
-                row=5, column=1, sticky="w")
-
+            ctk.CTkLabel(inner_frame, text="w_fin_net:", font=self.FONT_NORMAL).grid(
+                row=5, column=0, sticky="w", padx=5)
+            ctk.CTkLabel(inner_frame, text=f"L / {self.w_net_fin_grenz_allgemein}", font=self.FONT_NORMAL).grid(
+                row=5, column=1, sticky="w", padx=5)
+            self.on_any_change()
         elif self.situation_var.get() == "Überhöhte, Untergeordnete Bauteile":
             # Set Grenzwerte Überhöhte, Untergeordnete Bauteile
             self.w_inst_grenz_ueberhoeht = 200
@@ -934,91 +1088,106 @@ class Eingabemaske:
             self.w_net_fin_grenz_ueberhoeht = 250
 
             # Überhöhungseingabe
-            ttk.Label(self.gebrauchstauglichkeit_frame, text="w_c [mm]:", width=12).grid(
-                row=2, column=0, sticky="e", pady=2)
-            self.w_c_überhoehung = ttk.Entry(
-                self.gebrauchstauglichkeit_frame, width=6)
+            ctk.CTkLabel(inner_frame, text="w_c [mm]:", font=self.FONT_NORMAL).grid(
+                row=2, column=0, sticky="w", pady=2, padx=5)
+            self.w_c_überhoehung = ctk.CTkEntry(
+                inner_frame, width=self.W(60), font=self.FONT_NORMAL)
             self.w_c_überhoehung.insert(0, self.w_c_überhoehung_wert)
-            self.w_c_überhoehung.grid(row=2, column=1, sticky="w", pady=2)
+            self.w_c_überhoehung.grid(
+                row=2, column=1, sticky="w", pady=2, padx=5)
             self.w_c_überhoehung.bind("<KeyRelease>",
-                                      self._on_w_c_change, self.on_any_change)
+                                      self._on_w_c_change)
 
             # Ausgabe Grenzwerte
-            ttk.Label(self.gebrauchstauglichkeit_frame, text="w_inst:", width=12).grid(
-                row=3, column=0, sticky="w")
-            ttk.Label(self.gebrauchstauglichkeit_frame, text=f"L / {self.w_inst_grenz_ueberhoeht}", width=6).grid(
-                row=3, column=1, sticky="w")
+            ctk.CTkLabel(inner_frame, text="w_inst:", font=self.FONT_NORMAL).grid(
+                row=3, column=0, sticky="w", padx=5)
+            ctk.CTkLabel(inner_frame, text=f"L / {self.w_inst_grenz_ueberhoeht}", font=self.FONT_NORMAL).grid(
+                row=3, column=1, sticky="w", padx=5)
 
-            ttk.Label(self.gebrauchstauglichkeit_frame, text="w_fin:", width=12).grid(
-                row=4, column=0, sticky="w")
-            ttk.Label(self.gebrauchstauglichkeit_frame, text=f"L / {self.w_fin_grenz_ueberhoeht}", width=6).grid(
-                row=4, column=1, sticky="w")
+            ctk.CTkLabel(inner_frame, text="w_fin:", font=self.FONT_NORMAL).grid(
+                row=4, column=0, sticky="w", padx=5)
+            ctk.CTkLabel(inner_frame, text=f"L / {self.w_fin_grenz_ueberhoeht}", font=self.FONT_NORMAL).grid(
+                row=4, column=1, sticky="w", padx=5)
 
-            ttk.Label(self.gebrauchstauglichkeit_frame, text="w_fin_net:", width=12).grid(
-                row=5, column=0, sticky="w")
-            ttk.Label(self.gebrauchstauglichkeit_frame, text=f"L / {self.w_net_fin_grenz_ueberhoeht}", width=6).grid(
-                row=5, column=1, sticky="w")
+            ctk.CTkLabel(inner_frame, text="w_fin_net:", font=self.FONT_NORMAL).grid(
+                row=5, column=0, sticky="w", padx=5)
+            ctk.CTkLabel(inner_frame, text=f"L / {self.w_net_fin_grenz_ueberhoeht}", font=self.FONT_NORMAL).grid(
+                row=5, column=1, sticky="w", padx=5)
             self.on_any_change()
         elif self.situation_var.get() == "Eigene Werte":
             # Überhöhungseingabe
-            ttk.Label(self.gebrauchstauglichkeit_frame, text="w_c [mm]:", width=12).grid(
-                row=2, column=0, sticky="w")
-            self.w_c_überhoehung = ttk.Entry(
-                self.gebrauchstauglichkeit_frame, width=6)
+            ctk.CTkLabel(inner_frame, text="w_c [mm]:", font=self.FONT_NORMAL).grid(
+                row=2, column=0, sticky="w", pady=2, padx=5)
+            self.w_c_überhoehung = ctk.CTkEntry(
+                inner_frame, width=self.W(60), font=self.FONT_NORMAL)
             self.w_c_überhoehung.insert(0, self.w_c_überhoehung_wert)
-            self.w_c_überhoehung.grid(row=2, column=1, sticky="w")
-            self.w_c_überhoehung.bind("<KeyRelease>",
-                                      self._on_w_c_change, self.on_any_change)
+            self.w_c_überhoehung.grid(
+                row=2, column=1, sticky="w", pady=2, padx=5)
+            self.w_c_überhoehung.bind("<KeyRelease>", self._on_w_c_change)
 
-            # Ausgabe Grenzwerte
-            ttk.Label(self.gebrauchstauglichkeit_frame, text="w_inst       -> L / :", width=12).grid(
-                row=3, column=0, sticky="w")
-            self.w_inst_grenz_eigen = ttk.Entry(
-                self.gebrauchstauglichkeit_frame, width=6)
-            self.w_inst_grenz_eigen.insert(0, "300")
-            self.w_inst_grenz_eigen.grid(row=3, column=1, sticky="w")
-            self.w_inst_grenz_eigen.bind("<KeyRelease>",
-                                         self._on_gebrauchstauglichkeit_change)
+            # Eingabe Grenzwerte
+            ctk.CTkLabel(inner_frame, text="w_inst:", font=self.FONT_NORMAL).grid(
+                row=3, column=0, sticky="w", padx=5)
+            self.w_inst_eigen = ctk.CTkEntry(
+                inner_frame, width=self.W(60), font=self.FONT_NORMAL)
+            self.w_inst_grenz_eigen = 300
+            self.w_inst_eigen.insert(0, self.w_inst_grenz_eigen)
+            self.w_inst_eigen.grid(row=3, column=1, sticky="w", padx=5)
+            self.w_inst_eigen.bind("<KeyRelease>",
+                                   self._on_gebrauchstauglichkeit_change)
 
-            ttk.Label(self.gebrauchstauglichkeit_frame, text="w_fin         -> L / :", width=12).grid(
-                row=4, column=0, sticky="w")
-            self.w_fin_grenz_eigen = ttk.Entry(
-                self.gebrauchstauglichkeit_frame, width=6)
-            self.w_fin_grenz_eigen.insert(0, "200")
-            self.w_fin_grenz_eigen.grid(row=4, column=1, sticky="w")
-            self.w_fin_grenz_eigen.bind("<KeyRelease>",
-                                        self._on_gebrauchstauglichkeit_change)
+            ctk.CTkLabel(inner_frame, text="w_fin:", font=self.FONT_NORMAL).grid(
+                row=4, column=0, sticky="w", padx=5)
+            self.w_fin_eigen = ctk.CTkEntry(
+                inner_frame, width=self.W(60), font=self.FONT_NORMAL)
+            self.w_fin_grenz_eigen = 200
+            self.w_fin_eigen.insert(0, self.w_fin_grenz_eigen)
+            self.w_fin_eigen.grid(row=4, column=1, sticky="w", padx=5)
+            self.w_fin_eigen.bind("<KeyRelease>",
+                                  self._on_gebrauchstauglichkeit_change)
 
-            ttk.Label(self.gebrauchstauglichkeit_frame, text="w_fin_net -> L / :", width=12).grid(
-                row=5, column=0, sticky="w")
-            self.w_net_fin_grenz_eigen = ttk.Entry(
-                self.gebrauchstauglichkeit_frame, width=6)
-            self.w_net_fin_grenz_eigen.insert(0, "300")
-            self.w_net_fin_grenz_eigen.grid(
-                row=5, column=1, sticky="w")
-            self.w_net_fin_grenz_eigen.bind("<KeyRelease>",
-                                            self._on_gebrauchstauglichkeit_change)
+            ctk.CTkLabel(inner_frame, text="w_fin_net:", font=self.FONT_NORMAL).grid(
+                row=5, column=0, sticky="w", padx=5)
+            self.w_net_fin_eigen = ctk.CTkEntry(
+                inner_frame, width=self.W(60), font=self.FONT_NORMAL)
+            self.w_net_fin_grenz_eigen = 300
+            self.w_net_fin_eigen.insert(0, self.w_net_fin_grenz_eigen)
+            self.w_net_fin_eigen.grid(row=5, column=1, sticky="w", padx=5)
+            self.w_net_fin_eigen.bind("<KeyRelease>",
+                                      self._on_gebrauchstauglichkeit_change)
 
     def _on_gebrauchstauglichkeit_change(self, event=None):
         """
         Spezieller Callback für Änderungen an Gebrauchstauglichkeits-Parametern.
         Sendet Snapshot mit Flag 'only_deflection_check' an Backend.
+        Mit Debouncing (600ms), damit bei Eingabe die letzte Ziffer nicht abgeschnitten wird.
         """
         if not self.gui_fertig_geladen:
             return
 
+        # Debounce-Logik: Bricht den vorherigen Timer ab und startet einen neuen
+        # Längere Verzögerung (600ms statt 200ms) für entspannte Eingabe
+        if self._gebrauchstauglichkeit_timer is not None:
+            self.root.after_cancel(self._gebrauchstauglichkeit_timer)
+        self._gebrauchstauglichkeit_timer = self.root.after(
+            600, self._perform_gebrauchstauglichkeit_update)
+
+    def _perform_gebrauchstauglichkeit_update(self):
+        """
+        Führt die eigentliche Gebrauchstauglichkeits-Update-Logik nach Debounce aus.
+        """
         # Prüfe, ob bereits vollständige Berechnungsergebnisse vorhanden sind
         if not hasattr(self, 'snapshot') or not self.snapshot:
             logger.info(
                 "⚠️ Keine Berechnungsergebnisse vorhanden - führe vollständige Berechnung durch")
-            self.on_any_change(event)
+            self._perform_update()
             return
 
         # Prüfe, ob Schnittgrößen vorhanden sind
         if 'Schnittgroessen' not in self.snapshot or not self.snapshot.get('Schnittgroessen'):
             logger.info(
                 "⚠️ Keine Schnittgrößen vorhanden - führe vollständige Berechnung durch")
-            self.on_any_change(event)
+            self._perform_update()
             return
 
         logger.info(
@@ -1233,9 +1402,9 @@ class Eingabemaske:
             w_fin_grenz = self.w_fin_grenz_ueberhoeht
             w_net_fin_grenz = self.w_net_fin_grenz_ueberhoeht
         else:
-            w_inst_grenz = float(self.w_inst_grenz_eigen.get())
-            w_fin_grenz = float(self.w_fin_grenz_eigen.get())
-            w_net_fin_grenz = float(self.w_net_fin_grenz_eigen.get())
+            w_inst_grenz = float(self.w_inst_eigen.get())
+            w_fin_grenz = float(self.w_fin_eigen.get())
+            w_net_fin_grenz = float(self.w_net_fin_eigen.get())
         return {
             "situation": situation,
             "w_c": w_c,
@@ -1258,7 +1427,8 @@ class Eingabemaske:
         modus_text = "EC-Kombinatorik" if ec_modus else "Volllast"
 
         self.loading_animation_running = True
-        self.loading_label.config(text=f"⏳ Berechnung läuft ({modus_text})...")
+        self.loading_label.configure(
+            text=f"⏳ Berechnung läuft ({modus_text})...")
         self._animate_loading()
 
     def _animate_loading(self):
@@ -1282,7 +1452,7 @@ class Eingabemaske:
         else:
             new_symbol = "⏳"
 
-        self.loading_label.config(
+        self.loading_label.configure(
             text=f"{new_symbol} Berechnung läuft {modus_part}...")
 
         # Wiederhole Animation nach 500ms
@@ -1293,10 +1463,16 @@ class Eingabemaske:
         """Stoppt die Ladeanimation."""
         self.loading_animation_running = False
         if self.loading_label:
-            self.loading_label.config(text="✅ Berechnung abgeschlossen")
+            self.loading_label.configure(text="✅ Berechnung abgeschlossen")
             # Nach 2 Sekunden Text löschen
-            self.root.after(2000, lambda: self.loading_label.config(
+            self.root.after(2000, lambda: self.loading_label.configure(
                 text="") if self.loading_label else None)
+
+    def update_theme(self):
+        """Callback für Theme-Wechsel (Platzhalter)."""
+        # Aktuell keine speziellen Theme-Anpassungen nötig, da CTk-Widgets
+        # automatisch vom CustomTkinter-Theme profitieren.
+        return
 
 
 def starte_gui():

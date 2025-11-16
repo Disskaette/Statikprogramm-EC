@@ -4,7 +4,7 @@ Verwaltet verschiedene Berechnungsmodule innerhalb einer Position.
 """
 
 import tkinter as tk
-from tkinter import ttk
+import customtkinter as ctk
 import logging
 from pathlib import Path
 from typing import Dict, Optional
@@ -15,7 +15,7 @@ from frontend.modules.base_module import BaseModule
 logger = logging.getLogger(__name__)
 
 
-class ModuleTabManager(ttk.Frame):
+class ModuleTabManager(ctk.CTkFrame):
     """Verwaltet Tabs für verschiedene Module (Durchlaufträger, Brandschutz, etc.)"""
     
     def __init__(self, parent, position_model: PositionModel, position_file: Path, app_ref):
@@ -34,14 +34,14 @@ class ModuleTabManager(ttk.Frame):
         
         # Modul-Instanzen
         self.module_instances: Dict[str, BaseModule] = {}
-        self.module_frames: Dict[str, tk.Frame] = {}
+        self.module_tab_names: Dict[str, str] = {}  # module_id -> tab_name
         
-        # Notebook erstellen
-        self.notebook = ttk.Notebook(self)
-        self.notebook.pack(fill="both", expand=True)
+        # Tabview erstellen
+        self.tabview = ctk.CTkTabview(self)
+        self.tabview.pack(fill="both", expand=True)
         
-        # Events
-        self.notebook.bind("<<NotebookTabChanged>>", self._on_tab_changed)
+        # Tab-Wechsel-Callback
+        self.tabview.configure(command=self._on_tab_changed)
         
         # Module laden
         self._load_modules()
@@ -67,8 +67,10 @@ class ModuleTabManager(ttk.Frame):
                 logger.warning(f"Konnte Modul nicht instanziieren: {module_id}")
                 continue
             
-            # GUI erstellen
-            module_frame = ttk.Frame(self.notebook)
+            # Tab erstellen
+            self.tabview.add(module_name)
+            module_frame = self.tabview.tab(module_name)
+            
             try:
                 module_instance.create_gui(module_frame)
             except Exception as e:
@@ -83,12 +85,9 @@ class ModuleTabManager(ttk.Frame):
                 except Exception as e:
                     logger.error(f"Fehler beim Laden der Daten für {module_id}: {e}")
             
-            # Tab hinzufügen
-            self.notebook.add(module_frame, text=module_name)
-            
             # Speichern
             self.module_instances[module_id] = module_instance
-            self.module_frames[module_id] = module_frame
+            self.module_tab_names[module_id] = module_name
             
             logger.debug(f"Modul geladen: {module_id}")
     
@@ -99,13 +98,13 @@ class ModuleTabManager(ttk.Frame):
         Args:
             module_id: ID des zu aktivierenden Moduls
         """
-        if module_id not in self.module_frames:
+        if module_id not in self.module_tab_names:
             logger.warning(f"Modul nicht gefunden: {module_id}")
             return
         
         # Tab auswählen
-        module_frame = self.module_frames[module_id]
-        self.notebook.select(module_frame)
+        tab_name = self.module_tab_names[module_id]
+        self.tabview.set(tab_name)
         
         # on_module_activated aufrufen
         if module_id in self.module_instances:
@@ -114,17 +113,17 @@ class ModuleTabManager(ttk.Frame):
             except Exception as e:
                 logger.error(f"Fehler in on_module_activated für {module_id}: {e}")
     
-    def _on_tab_changed(self, event):
+    def _on_tab_changed(self):
         """Callback wenn Modul-Tab gewechselt wird"""
-        current_tab = self.notebook.select()
+        current_tab = self.tabview.get()
         
         if not current_tab:
             return
         
         # Finde Modul-ID für diesen Tab
         current_module_id = None
-        for mod_id, frame in self.module_frames.items():
-            if str(frame) == current_tab:
+        for mod_id, tab_name in self.module_tab_names.items():
+            if tab_name == current_tab:
                 current_module_id = mod_id
                 break
         
@@ -176,13 +175,13 @@ class ModuleTabManager(ttk.Frame):
         Returns:
             BaseModule-Instanz oder None
         """
-        current_tab = self.notebook.select()
+        current_tab = self.tabview.get()
         
         if not current_tab:
             return None
         
-        for mod_id, frame in self.module_frames.items():
-            if str(frame) == current_tab:
+        for mod_id, tab_name in self.module_tab_names.items():
+            if tab_name == current_tab:
                 return self.module_instances.get(mod_id)
         
         return None
@@ -208,6 +207,6 @@ class ModuleTabManager(ttk.Frame):
                 logger.error(f"Fehler beim Cleanup: {e}")
         
         self.module_instances.clear()
-        self.module_frames.clear()
+        self.module_tab_names.clear()
         
         logger.debug("ModuleTabManager aufgeräumt")

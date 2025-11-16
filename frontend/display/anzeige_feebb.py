@@ -1,4 +1,5 @@
 import tkinter as tk
+import customtkinter as ctk
 import matplotlib.pyplot as plt
 import threading
 import logging
@@ -64,15 +65,15 @@ class FeebbAnzeiger:
 
         moment = max_data.get('moment', 0)
         querkraft = max_data.get('querkraft', 0)
-        self.eingabemaske.root.after(0, lambda: self.eingabemaske.max_moment_kalt.config(
+        self.eingabemaske.root.after(0, lambda: self.eingabemaske.max_moment_kalt.configure(
             text=f"{moment/1_000_000:.1f}"))
-        self.eingabemaske.root.after(0, lambda: self.eingabemaske.max_querkraft_kalt.config(
+        self.eingabemaske.root.after(0, lambda: self.eingabemaske.max_querkraft_kalt.configure(
             text=f"{querkraft/1000:.1f}"))
 
     def toggle_schnittkraftfenster(self):
         if self.eingabemaske.schnittgroeßen_anzeige_button.get():
-            if self.schnittkraftfenster is None or not tk.Toplevel.winfo_exists(self.schnittkraftfenster):
-                self.schnittkraftfenster = tk.Toplevel(self.eingabemaske.root)
+            if self.schnittkraftfenster is None or not ctk.CTkToplevel.winfo_exists(self.schnittkraftfenster):
+                self.schnittkraftfenster = ctk.CTkToplevel(self.eingabemaske.root)
                 self.schnittkraftfenster.title(
                     "Schnittkraft- und Durchbiegungsverläufe GZT")
                 self.schnittkraftfenster.protocol(

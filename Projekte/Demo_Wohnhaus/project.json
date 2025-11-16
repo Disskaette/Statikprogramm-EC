@@ -1,11 +1,16 @@
 {
   "name": "Demo Wohnhaus",
   "created": "2025-10-23T16:48:53.000693",
-  "last_modified": "2025-10-24T18:13:48.216527",
+  "last_modified": "2025-11-16T19:20:14.939843",
   "description": "Beispielprojekt zur Demonstration",
   "positions": [
     "Position_1_01_HT_1_-_Wohnzimmer.json",
     "EG/Position_1_02_HT_2_-_Küche.json",
-    "Position_1_02_Sparren.json"
-  ]
+    "Position_1_02_Sparren.json",
+    "Position_4_fghkjv.json",
+    "Position_tgzvjghj_ghjghjg.json",
+    "Position_1_Tewtsads.json",
+    "Position_asdasda_asdasd.json"
+  ],
+  "uuid": "81c4be4f-63cc-4525-8cf2-be387cb34b82"
 }

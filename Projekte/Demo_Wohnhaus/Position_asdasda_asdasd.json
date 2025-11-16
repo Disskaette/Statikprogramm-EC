@@ -1,0 +1,12 @@
+{
+  "position_nummer": "asdasda",
+  "position_name": "asdasd",
+  "created": "2025-11-16T19:20:14.938864",
+  "last_modified": "2025-11-16T19:20:14.939461",
+  "active_module": "durchlauftraeger",
+  "modules": {
+    "durchlauftraeger": null,
+    "brandschutz": null,
+    "auflager": null
+  }
+}

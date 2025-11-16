@@ -1,8 +1,9 @@
 import tkinter as tk
+from tkinter import ttk
+import customtkinter as ctk
 import logging
 import io
 from PIL import Image, ImageTk
-from tkinter import ttk
 
 # Root-Logger-Verhalten
 logging.basicConfig(
@@ -17,17 +18,24 @@ logger = logging.getLogger(__name__)          # logger für dieses Modul
 
 class SystemAnzeiger:
     def __init__(self, parent_frame, eingabemaske):
-        self.eingabemaske = eingabemaske
-        self.parent = parent_frame
-        self.tk_img = None  # Referenz halten
+        from frontend.gui.theme_config import ThemeManager
+        fonts = ThemeManager.get_fonts()
 
-        # Frame für System
-        self.frame_system = ttk.LabelFrame(
-            self.parent, text="Statisches System", padding=10)
+        self.parent = parent_frame
+        self.root = eingabemaske.root
+        self.eingabemaske = eingabemaske  # Für Zugriff auf max_formula_width
+
+        # Frame System
+        self.frame_system = ctk.CTkFrame(self.parent)
         self.frame_system.pack(fill="both", expand=True, padx=10, pady=10)
 
-        self.system_image_frame = ttk.Frame(self.frame_system)
-        self.system_image_frame.pack(fill="both", expand=True)
+        # Titel-Label
+        ctk.CTkLabel(self.frame_system, text="Statisches System",
+                     font=fonts['heading']).pack(pady=5)
+
+        self.system_image_frame = ctk.CTkFrame(self.frame_system)
+        self.system_image_frame.pack(
+            fill="both", expand=True, padx=10, pady=10)
 
     def update(self, snapshot, callback=None):
         """Aktualisiert den System-Plot direkt im Haupt-Thread."""
@@ -120,10 +128,10 @@ class SystemAnzeiger:
             from frontend.gui.theme_config import ThemeManager
             from frontend.gui.latex_renderer import tkcolor_to_hex
 
-            style = ttk.Style(self.eingabemaske.root)
+            style = ttk.Style(self.root)
             fg_ttk = style.lookup('TLabel', 'foreground')
             if fg_ttk:
-                text_color = tkcolor_to_hex(self.eingabemaske.root, fg_ttk)
+                text_color = tkcolor_to_hex(self.root, fg_ttk)
             else:
                 # Fallback: System-Farbe
                 text_color = '#000000' if ThemeManager._current_mode == 'light' else '#E0E0E0'
@@ -134,7 +142,16 @@ class SystemAnzeiger:
             traeger_start = plot_data["traeger_start"]
             traeger_ende = plot_data["traeger_ende"]
 
-            fig, ax = plt.subplots(figsize=(8, 2))
+            # FESTE Bildbreite für System-Darstellung!
+            # System soll NICHT von Formelbreite abhängen, sonst wird Träger bei jeder Berechnung schmaler
+            FIXED_SYSTEM_WIDTH = 800  # Feste Breite in Pixel
+            fig_width_inches = FIXED_SYSTEM_WIDTH / 100.0  # 8 inches bei 100 DPI
+
+            # Höhe ebenfalls kompakt halten
+            fig_height_inches = 2.0
+
+            fig, ax = plt.subplots(
+                figsize=(fig_width_inches, fig_height_inches))
             fig.patch.set_visible(False)  # Transparenter Hintergrund
 
             # Normalisierung: Trägerlänge auf feste Darstellungslänge mappen
@@ -172,50 +189,56 @@ class SystemAnzeiger:
             ax.plot([traeger_start_norm, traeger_ende_norm],
                     [1, 1], color=text_color, linewidth=2)
 
-            # Feste Auflagergrößen (nicht skaliert)
-            dreieck_breite = 0.2
-            festlager_breite = 0.3
-            loslager_breite = 0.25
+            # Auflagergrößen - KLEINER gemacht
+            dreieck_breite = 0.15  # Kleiner: 0.15 statt 0.2
+            dreieck_hoehe = 0.75  # Kleiner: bis y=0.75 statt 0.6
+            festlager_breite = 0.25  # Kleiner: 0.25 statt 0.3
+            loslager_breite = 0.2  # Kleiner: 0.2 statt 0.25
 
             # Auflager zeichnen (an normalisierten Positionen) - mit Theme-Farbe
             for i, x_norm in enumerate(auflager_pos_norm):
                 is_fixed = (i == 0 and not any(
                     seg['label'] == 'Kragarm links' for seg in segments))
 
-                # Dreieck (Spitze jetzt exakt auf dem Träger)
-                ax.plot([x_norm, x_norm-dreieck_breite, x_norm+dreieck_breite, x_norm], [1.0, 0.6, 0.6, 1.0],
+                # Dreieck - KLEINER (Spitze auf Träger bei y=1.0, Basis bei y=0.75)
+                ax.plot([x_norm, x_norm-dreieck_breite, x_norm+dreieck_breite, x_norm],
+                        [1.0, dreieck_hoehe, dreieck_hoehe, 1.0],
                         color=text_color, linewidth=1.5)
-                ax.text(x_norm, 1.08, chr(65+i), ha='center',
-                        va='bottom', fontsize=12, color=text_color)
 
                 if is_fixed:
-                    # Festlager: Linie auf gleicher Höhe wie Dreieckbasis, länger
-                    ax.plot([x_norm-festlager_breite, x_norm+festlager_breite], [0.6, 0.6],
+                    # Festlager: Linie DIREKT auf Dreieckbasis (y=0.75)
+                    ax.plot([x_norm-festlager_breite, x_norm+festlager_breite],
+                            [dreieck_hoehe, dreieck_hoehe],
                             color=text_color, linewidth=1.5)
                 else:
-                    # Loslager: Längere Linie mit Abstand unter dem Dreieck
-                    ax.plot([x_norm-loslager_breite, x_norm+loslager_breite], [0.5, 0.5],
+                    # Loslager: Linie etwas UNTER der Dreieckbasis (y=0.65)
+                    ax.plot([x_norm-loslager_breite, x_norm+loslager_breite],
+                            [dreieck_hoehe - 0.1, dreieck_hoehe - 0.1],
                             color=text_color, linewidth=1.5)
 
-            # Bemaßung und Beschriftung für jedes Segment (mit normalisierten Koordinaten) - mit Theme-Farbe
+                # Lagerbuchstaben UNTER den Auflagern (y=0.55)
+                ax.text(x_norm, 0.55, chr(65+i), ha='center',
+                        va='top', fontsize=12, color=text_color)
+
+            # Bemaßung für jedes Segment - UNTER den Lagerbuchstaben
             label_pos_high = False  # Flag für alternierende Position
             for seg in segments_norm:
                 x1_norm, x2_norm = seg['start'], seg['end']
-                # Bemaßungspfeil (tiefer gesetzt)
-                ax.annotate('', xy=(x1_norm, 0.2), xytext=(x2_norm, 0.2), arrowprops=dict(
+                # Bemaßungspfeil TIEFER bei y=0.15 (mehr Abstand zu Lagerbuchstaben)
+                ax.annotate('', xy=(x1_norm, 0.15), xytext=(x2_norm, 0.15), arrowprops=dict(
                     arrowstyle='<->', lw=1.2, color=text_color))
 
-                # Bemaßungstext (ganz unten) - mit realer Länge
+                # Bemaßungstext bei y=0.05 - mit realer Länge
                 ax.text(
-                    (x1_norm+x2_norm)/2, 0.1, f"{seg['len']:.2f} m", ha='center', va='top', fontsize=11, color=text_color)
+                    (x1_norm+x2_norm)/2, 0.05, f"{seg['len']:.2f} m", ha='center', va='top', fontsize=11, color=text_color)
 
-                # Logik für Beschriftungsposition
-                y_pos = 1.05  # Standard-Position über dem Balken
+                # Logik für Beschriftungsposition - HÖHER gesetzt
+                y_pos = 1.15  # Standard-Position über dem Balken (höher!)
 
                 # Bei kleinen Feldern Position alternieren, um Überlappung zu vermeiden
                 if 'Feld' in seg['label'] and seg['len'] < 2.5:
                     if label_pos_high:
-                        y_pos = 1.3  # Höhere Position
+                        y_pos = 1.4  # Höhere Position (höher!)
                     label_pos_high = not label_pos_high
                 else:
                     # Bei großen Feldern oder Kragarmen, den Alternator zurücksetzen
@@ -229,24 +252,36 @@ class SystemAnzeiger:
 
             ax.axis('off')
             ax.set_aspect('equal')
-            ax.set_xlim(traeger_start_norm - 0.5, traeger_ende_norm + 0.5)
-            ax.set_ylim(0, 1.8)  # Y-Limit erhöht für mehr Platz
+
+            # Feste xlim (da Bildbreite jetzt auch fest ist)
+            ax.set_xlim(traeger_start_norm - 0.3, traeger_ende_norm + 0.3)
+            # ylim ENGER für gleichmäßige Abstände oben und unten
+            ax.set_ylim(-0.05, 1.5)  # Von -0.05 bis 1.5 statt 0 bis 1.8
 
             buf = io.BytesIO()
             fig.savefig(buf, format='png', bbox_inches='tight',
-                        dpi=100, transparent=True)  # Transparent!
+                        dpi=1000, transparent=True)  # Transparent, höhere Auflösung
             plt.close(fig)  # Wichtig: Figur schließen, um Speicher freizugeben
             buf.seek(0)
 
-            # Tkinter-Bild erstellen und im Label anzeigen
+            # Tkinter-Bild erstellen und auf passende Größe skalieren
             img = Image.open(buf)
+
+            # Bild mit globalem Skalierungsfaktor verkleinern (gekoppelt an UI_SCALE)
+            system_scale = ThemeManager.get_system_scale()
+            w, h = img.size
+            new_size = (int(w * system_scale),
+                        int(h * system_scale))
+            img = img.resize(new_size, Image.Resampling.LANCZOS)
+
             photo = ImageTk.PhotoImage(img)
 
             # Bestehende Widgets im Frame entfernen
             for widget in self.system_image_frame.winfo_children():
                 widget.destroy()
 
-            label = ttk.Label(self.system_image_frame, image=photo)
+            # CustomTkinter-Label ohne bg-Argument verwenden
+            label = ctk.CTkLabel(self.system_image_frame, text="", image=photo)
             # WICHTIG: Referenz auf das Bild speichern, um Garbage Collection zu verhindern!
             label.image = photo
             self.tk_img = photo  # Zusätzliche Referenz in der Klasse
@@ -263,6 +298,6 @@ class SystemAnzeiger:
         # Bestehende Widgets im Frame entfernen
         for widget in self.system_image_frame.winfo_children():
             widget.destroy()
-        label = ttk.Label(self.system_image_frame,
-                          text=f"⚠️ Fehler: {e}")
+        label = tk.Label(self.system_image_frame,
+                         text=f"⚠️ Fehler: {e}")
         label.pack()

@@ -2,12 +2,18 @@
 Theme-Konfiguration für einheitliches Design.
 Definiert Farben und Styles für die gesamte Anwendung.
 Unterstützt Light und Dark Mode.
+
+HINWEIS: CustomTkinter verwendet sein eigenes Theme-System.
+Diese Klasse wird hauptsächlich für matplotlib-Theming verwendet.
 """
 
-from tkinter import ttk
+import customtkinter as ctk
 import logging
 import subprocess
 import platform
+
+# ttk nur für spezielle Widgets (Treeview, Scrollbar)
+from tkinter import ttk
 
 logger = logging.getLogger(__name__)
 
@@ -16,8 +22,77 @@ class ThemeManager:
     """Verwaltet das visuelle Theme der Anwendung mit Dark Mode Support"""
 
     # Flag für aktuelles Theme
-    _current_mode = 'light'
+    _current_mode = 'dark'  # Default: Dark Mode
     _registered_roots = []  # Alle Root-Fenster für Theme-Updates
+    _theme_callbacks = []  # Callbacks die bei Theme-Wechsel aufgerufen werden
+
+    # Globaler UI-Skalierungsfaktor für Schriften
+    UI_SCALE = 1.0  # 1.0 = Standard, 0.9 = kleiner, 1.1 = größer
+
+    # Separater Skalierungsfaktor NUR für Widget-Größen (width/height)
+    # Unabhängig von Schriftgrößen, um Widgets kompakter/größer zu machen
+    WIDGET_SCALE = 0.8  # 1.0 = wie UI_SCALE, <1.0 = kompakter, >1.0 = größer
+
+    # Zusätzlicher Skalierungsfaktor NUR für LaTeX-Formeln (relativ zum UI_SCALE)
+    # Finale Formelgröße = UI_SCALE * LATEX_EXTRA_SCALE
+    LATEX_EXTRA_SCALE = 0.2  # 0.16 bei UI_SCALE=0.8 → 0.128 finale Größe
+
+    # Zusätzlicher Skalierungsfaktor NUR für System-Grafik (relativ zum UI_SCALE)
+    # Finale Systemgröße = UI_SCALE * SYSTEM_EXTRA_SCALE
+    SYSTEM_EXTRA_SCALE = 0.11  # 0.1 bei UI_SCALE=0.8 → 0.1 finale Größe
+
+    # Maximale Breite der Anzeigefenster (LaTeX-Formeln, System-Grafik)
+    # Steuert die maximale Breite aller Anzeigen in Pixeln
+    MAX_DISPLAY_WIDTH = 600  # Pixel - kompakt für normale Bildschirme
+
+    # Skalierte Font-Definitionen (werden automatisch angepasst)
+    @classmethod
+    def get_fonts(cls):
+        """Gibt skalierte Font-Tupel zurück."""
+        s = cls.UI_SCALE
+        return {
+            # Überschriften (groß, fett)
+            'heading': ('', int(12 * s), 'bold'),
+            # Fetter Text (normale Größe)
+            'bold': ('', int(10 * s), 'bold'),
+            'normal': ('', int(10 * s)),              # Normaler Text
+            'small': ('', int(9 * s)),                # Kleiner Text
+        }
+
+    @classmethod
+    def get_latex_scale(cls):
+        """
+        Gibt den finalen Skalierungsfaktor für LaTeX-Bilder zurück.
+        Kombiniert globalen UI_SCALE mit LaTeX-spezifischem Zusatzfaktor.
+
+        Returns:
+            float: Finaler Skalierungsfaktor für LaTeX-Bilder
+        """
+        return cls.UI_SCALE * cls.LATEX_EXTRA_SCALE
+
+    @classmethod
+    def get_system_scale(cls):
+        """
+        Gibt den finalen Skalierungsfaktor für System-Grafik zurück.
+        Kombiniert globalen UI_SCALE mit System-spezifischem Zusatzfaktor.
+
+        Returns:
+            float: Finaler Skalierungsfaktor für System-Grafik
+        """
+        return cls.UI_SCALE * cls.SYSTEM_EXTRA_SCALE
+
+    @classmethod
+    def scale(cls, value):
+        """
+        Skaliert einen einzelnen Wert (z.B. Widget-Breite) mit WIDGET_SCALE.
+
+        Args:
+            value: Ursprünglicher Wert (int oder float)
+
+        Returns:
+            int: Skalierter Wert
+        """
+        return int(value * cls.WIDGET_SCALE)
 
     # Light Mode Farbpalette
     COLORS_LIGHT = {
@@ -69,8 +144,8 @@ class ThemeManager:
         'accent_red': '#E57373',       # Hellrot (Fehler)
     }
 
-    # Aktuelle Farben (wird bei Theme-Wechsel aktualisiert)
-    COLORS = COLORS_LIGHT.copy()
+    # Aktuelle Farben (wird bei Theme-Wechsel aktualisiert) - Default: Dark
+    COLORS = COLORS_DARK.copy()
 
     @classmethod
     def detect_system_theme(cls):
@@ -97,6 +172,12 @@ class ThemeManager:
         return 'light'
 
     @classmethod
+    def register_callback(cls, callback):
+        """Registriert einen Callback der bei Theme-Wechsel aufgerufen wird"""
+        if callback not in cls._theme_callbacks:
+            cls._theme_callbacks.append(callback)
+
+    @classmethod
     def set_mode(cls, mode):
         """
         Setzt den Theme-Modus (light/dark) und aktualisiert alle Fenster.
@@ -119,6 +200,13 @@ class ThemeManager:
             except:
                 logger.warning(f"Konnte Theme nicht für Fenster aktualisieren")
 
+        # Alle Callbacks aufrufen
+        for callback in cls._theme_callbacks:
+            try:
+                callback()
+            except Exception as e:
+                logger.warning(f"Theme-Callback Fehler: {e}")
+
     @classmethod
     def toggle_mode(cls):
         """
@@ -138,6 +226,43 @@ class ThemeManager:
         return cls._current_mode
 
     @classmethod
+    def register_theme_callback(cls, callback):
+        """
+        Registriert einen Callback, der bei Theme-Wechsel aufgerufen wird.
+
+        Args:
+            callback: Funktion die ohne Parameter aufgerufen wird
+        """
+        if callback not in cls._theme_callbacks:
+            cls._theme_callbacks.append(callback)
+
+    @classmethod
+    def set_ui_scale(cls, scale: float):
+        """
+        Setzt den globalen UI-Skalierungsfaktor für Widgets und Schriften.
+
+        Args:
+            scale: float - Skalierungsfaktor (1.0 = Standard)
+        """
+        cls.UI_SCALE = scale
+        # CustomTkinter Widget-Scaling anwenden
+        ctk.set_widget_scaling(scale)
+        logger.info(f"UI-Skalierung auf {scale} gesetzt")
+
+    @classmethod
+    def get_scaled_font_size(cls, base_size: int) -> int:
+        """
+        Gibt eine skalierte Schriftgröße zurück.
+
+        Args:
+            base_size: Basis-Schriftgröße
+
+        Returns:
+            Skalierte Schriftgröße
+        """
+        return int(base_size * cls.UI_SCALE)
+
+    @classmethod
     def apply_theme(cls, root, register=True, auto_detect=True):
         """
         Wendet das Theme auf die gesamte Anwendung an.
@@ -151,11 +276,11 @@ class ThemeManager:
         if register and root not in cls._registered_roots:
             cls._registered_roots.append(root)
 
-        # System-Theme erkennen (beim ersten Aufruf)
-        if auto_detect and register:
-            system_theme = cls.detect_system_theme()
-            cls.set_mode(system_theme)
-            logger.info(f"System-Theme erkannt: {system_theme}")
+        # System-Theme erkennen (beim ersten Aufruf) - DEAKTIVIERT, nutze Dark Mode als Default
+        # if auto_detect and register:
+        #     system_theme = cls.detect_system_theme()
+        #     cls.set_mode(system_theme)
+        #     logger.info(f"System-Theme erkannt: {system_theme}")
 
         style = ttk.Style(root)
 

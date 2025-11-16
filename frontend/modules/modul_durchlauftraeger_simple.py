@@ -4,7 +4,7 @@ Wird später durch vollständige Integration der eingabemaske.py ersetzt.
 """
 
 import tkinter as tk
-from tkinter import ttk
+import customtkinter as ctk
 from typing import Dict, Any, Optional
 from .base_module import BaseModule
 
@@ -29,57 +29,71 @@ class ModulDurchlauftraegerSimple(BaseModule):
     def create_gui(self, parent_frame: tk.Frame) -> tk.Frame:
         """Erstellt eine vereinfachte GUI"""
         
-        self.gui_frame = ttk.Frame(parent_frame)
+        self.gui_frame = ctk.CTkFrame(parent_frame)
         self.gui_frame.pack(fill="both", expand=True, padx=10, pady=10)
         
         # Info-Label
-        info_frame = ttk.LabelFrame(self.gui_frame, text="ℹ️ Hinweis", padding=10)
+        info_frame = ctk.CTkFrame(self.gui_frame)
         info_frame.pack(fill="x", pady=(0, 10))
+        ctk.CTkLabel(info_frame, text="ℹ️ Hinweis", 
+                    font=("", 12, "bold")).pack(pady=5)
         
-        ttk.Label(info_frame, 
-                 text="Dies ist eine vereinfachte Demo-Version.\n"
-                      "Die vollständige Integration der Eingabemaske kommt als nächstes.",
-                 font=("", 10)).pack()
+        ctk.CTkLabel(info_frame, 
+                    text="Dies ist eine vereinfachte Demo-Version.\n"
+                         "Die vollständige Integration der Eingabemaske kommt als nächstes.",
+                    font=("", 10)).pack(padx=10, pady=5)
         
         # Systemeingabe
-        system_frame = ttk.LabelFrame(self.gui_frame, text="Systemeingabe", padding=10)
+        system_frame = ctk.CTkFrame(self.gui_frame)
         system_frame.pack(fill="x", pady=5)
+        ctk.CTkLabel(system_frame, text="Systemeingabe", 
+                    font=("", 12, "bold")).pack(pady=5)
         
-        ttk.Label(system_frame, text="Sprungmaß e [m]:").grid(row=0, column=0, sticky="w")
-        self.sprungmass_entry = ttk.Entry(system_frame, width=10)
+        inner_system = ctk.CTkFrame(system_frame)
+        inner_system.pack(padx=10, pady=5)
+        
+        ctk.CTkLabel(inner_system, text="Sprungmaß e [m]:").grid(row=0, column=0, sticky="w", padx=5)
+        self.sprungmass_entry = ctk.CTkEntry(inner_system, width=100)
         self.sprungmass_entry.insert(0, "1.00")
         self.sprungmass_entry.grid(row=0, column=1, padx=5, pady=2)
         
-        ttk.Label(system_frame, text="Anzahl Felder:").grid(row=1, column=0, sticky="w")
+        ctk.CTkLabel(inner_system, text="Anzahl Felder:").grid(row=1, column=0, sticky="w", padx=5)
         self.feldanzahl_var = tk.IntVar(value=2)
-        spinbox = ttk.Spinbox(system_frame, from_=1, to=5, 
-                             textvariable=self.feldanzahl_var, width=8)
+        spinbox = tk.Spinbox(inner_system, from_=1, to=5, 
+                            textvariable=self.feldanzahl_var, width=8)
         spinbox.grid(row=1, column=1, padx=5, pady=2)
         
         # Lasten
-        lasten_frame = ttk.LabelFrame(self.gui_frame, text="Lasten", padding=10)
+        lasten_frame = ctk.CTkFrame(self.gui_frame)
         lasten_frame.pack(fill="x", pady=5)
+        ctk.CTkLabel(lasten_frame, text="Lasten", 
+                    font=("", 12, "bold")).pack(pady=5)
         
-        ttk.Label(lasten_frame, text="Eigengewicht [kN/m²]:").grid(row=0, column=0, sticky="w")
-        self.eigengewicht_entry = ttk.Entry(lasten_frame, width=10)
+        inner_lasten = ctk.CTkFrame(lasten_frame)
+        inner_lasten.pack(padx=10, pady=5)
+        
+        ctk.CTkLabel(inner_lasten, text="Eigengewicht [kN/m²]:").grid(row=0, column=0, sticky="w", padx=5)
+        self.eigengewicht_entry = ctk.CTkEntry(inner_lasten, width=100)
         self.eigengewicht_entry.insert(0, "7.41")
         self.eigengewicht_entry.grid(row=0, column=1, padx=5, pady=2)
         
         # Ergebnisse (Placeholder)
-        ergebnis_frame = ttk.LabelFrame(self.gui_frame, text="Ergebnisse", padding=10)
+        ergebnis_frame = ctk.CTkFrame(self.gui_frame)
         ergebnis_frame.pack(fill="both", expand=True, pady=5)
+        ctk.CTkLabel(ergebnis_frame, text="Ergebnisse", 
+                    font=("", 12, "bold")).pack(pady=5)
         
-        ttk.Label(ergebnis_frame, 
-                 text="Die vollständige Berechnung und Anzeige\n"
-                      "wird in der finalen Version integriert.",
-                 font=("", 9), foreground="gray").pack(pady=20)
+        ctk.CTkLabel(ergebnis_frame, 
+                    text="Die vollständige Berechnung und Anzeige\n"
+                         "wird in der finalen Version integriert.",
+                    font=("", 9), text_color="gray").pack(pady=20)
         
         # Button
-        ttk.Button(ergebnis_frame, 
-                  text="🔬 Berechnung starten",
-                  command=self._run_calculation).pack(pady=5)
+        ctk.CTkButton(ergebnis_frame, 
+                     text="🔬 Berechnung starten",
+                     command=self._run_calculation).pack(pady=5)
         
-        self.result_label = ttk.Label(ergebnis_frame, text="", font=("", 10, "bold"))
+        self.result_label = ctk.CTkLabel(ergebnis_frame, text="", font=("", 10, "bold"))
         self.result_label.pack(pady=10)
         
         return self.gui_frame
@@ -135,7 +149,7 @@ class ModulDurchlauftraegerSimple(BaseModule):
             f"Last: {data['eigengewicht']} kN/m²"
         )
         
-        self.result_label.config(text=result_text)
+        self.result_label.configure(text=result_text)
         
         # Callback für Datenänderungen
         self.notify_data_changed()

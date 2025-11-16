@@ -53,11 +53,19 @@ class ProjectExplorer(ttk.Frame):
         scrollbar = ttk.Scrollbar(tree_container)
         scrollbar.pack(side="right", fill="y")
 
-        # TreeView
+        # TreeView mit MULTI-SELECT
         self.tree = ttk.Treeview(tree_container, yscrollcommand=scrollbar.set,
-                                 selectmode="browse")
+                                 selectmode="extended")  # Multi-Select!
         self.tree.pack(side="left", fill="both", expand=True)
         scrollbar.config(command=self.tree.yview)
+
+        # Drag & Drop State
+        self._drag_data = {
+            "x": 0,
+            "y": 0,
+            "dragging": False,
+            "threshold": 5  # Pixel bevor Drag startet
+        }
 
         # Spalten konfigurieren
         self.tree["columns"] = ("type",)
@@ -141,7 +149,8 @@ class ProjectExplorer(ttk.Frame):
                 folder_id = self.tree.insert(parent_id, "end",
                                              text=f"📁 {item.name}",
                                              values=("Ordner",),
-                                             tags=("folder", str(item)))  # Pfad als zweiter Tag
+                                             # Pfad als zweiter Tag
+                                             tags=("folder", str(item)))
                 # Rekursiv in Unterordner
                 self._load_positions_recursive(folder_id, base_path, item)
 
@@ -243,14 +252,19 @@ class ProjectExplorer(ttk.Frame):
             label="Löschen", command=self._context_delete)
 
     def _on_right_click(self, event):
-        """Behandelt Rechtsklick"""
+        """Behandelt Rechtsklick (Multi-Select aware)"""
         # Finde Item unter Mauszeiger
         item_id = self.tree.identify_row(event.y)
         if not item_id:
             return
 
-        # Selektiere das Item
-        self.tree.selection_set(item_id)
+        # WICHTIG: Behalte Multi-Selection bei!
+        # Nur wenn das Item NICHT bereits selektiert ist, setze neue Selection
+        current_selection = self.tree.selection()
+        if item_id not in current_selection:
+            # Item nicht in aktueller Selection → nur dieses selektieren
+            self.tree.selection_set(item_id)
+        # Sonst: Behalte aktuelle Multi-Selection bei
 
         # Zeige Kontextmenü
         try:
@@ -300,7 +314,7 @@ class ProjectExplorer(ttk.Frame):
             try:
                 old_path.rename(new_path)
                 logger.info(f"Position umbenannt: {old_path} → {new_path}")
-                self.refresh(None)  # Refresh Explorer
+                self.refresh(self.current_project_manager)  # Refresh Explorer
             except Exception as e:
                 from tkinter import messagebox
                 messagebox.showerror(
@@ -336,7 +350,7 @@ class ProjectExplorer(ttk.Frame):
                 json.dump(data, f, indent=2, ensure_ascii=False)
 
             logger.info(f"Position dupliziert: {path} → {new_path}")
-            self.refresh(None)
+            self.refresh(self.current_project_manager)
 
         except Exception as e:
             messagebox.showerror("Fehler", f"Duplizieren fehlgeschlagen:\n{e}")
@@ -344,7 +358,7 @@ class ProjectExplorer(ttk.Frame):
     def _context_new_folder(self):
         """Erstellt einen neuen Ordner"""
         from tkinter import simpledialog, messagebox
-        
+
         # Prüfe, ob ein Projekt geladen ist
         if not self.current_project_path:
             messagebox.showwarning(
@@ -352,85 +366,139 @@ class ProjectExplorer(ttk.Frame):
                 "Bitte öffnen Sie zuerst ein Projekt, um Ordner zu erstellen."
             )
             return
-        
+
         # Finde Ziel-Ordner (wo der neue Ordner erstellt werden soll)
         selection = self.tree.selection()
         target_path = self.current_project_path
-        
+
         if selection:
             item_id = selection[0]
             tags = self.tree.item(item_id, "tags")
-            
+
             # Wenn Position ausgewählt: Im gleichen Ordner erstellen
             if "position" in tags and len(tags) > 1:
                 target_path = Path(tags[1]).parent
             # Wenn Ordner ausgewählt: Im Ordner erstellen
             elif "folder" in tags and len(tags) > 1:
                 target_path = Path(tags[1])
-        
+
         # Ordnernamen abfragen
         folder_name = simpledialog.askstring(
             "Neuer Ordner",
             "Ordnername (z.B. 'EG', 'OG', 'Dachgeschoss'):"
         )
-        
+
         if not folder_name:
             return
-        
+
         try:
             new_folder = target_path / folder_name
             new_folder.mkdir(parents=True, exist_ok=False)
-            
+
             logger.info(f"Ordner erstellt: {new_folder}")
             self.refresh(self.current_project_manager)
-            
+
         except FileExistsError:
-            messagebox.showerror("Fehler", f"Ordner '{folder_name}' existiert bereits")
+            messagebox.showerror(
+                "Fehler", f"Ordner '{folder_name}' existiert bereits")
         except Exception as e:
-            messagebox.showerror("Fehler", f"Ordner erstellen fehlgeschlagen:\n{e}")
-    
+            messagebox.showerror(
+                "Fehler", f"Ordner erstellen fehlgeschlagen:\n{e}")
+
     def _context_delete(self):
-        """Löscht die ausgewählte Position oder Ordner"""
+        """Löscht die ausgewählte(n) Position(en) oder Ordner (Multi-Select Support)"""
         from tkinter import messagebox
         import shutil
-        
+
         selection = self.tree.selection()
         if not selection:
             return
-        
+
+        # Multi-Select: Mehrere Items löschen
+        if len(selection) > 1:
+            result = messagebox.askyesno(
+                "Mehrere Elemente löschen",
+                f"Möchten Sie {len(selection)} Elemente wirklich löschen?\n\nDieser Vorgang kann nicht rückgängig gemacht werden!"
+            )
+
+            if not result:
+                return
+
+            # Lösche alle selektierten Items
+            deleted_count = 0
+            errors = []
+
+            for item_id in selection:
+                try:
+                    tags = self.tree.item(item_id, "tags")
+
+                    if "position" in tags and len(tags) > 1:
+                        path = Path(tags[1])
+                        path.unlink()
+
+                        if self.on_position_deleted:
+                            self.on_position_deleted(path)
+
+                        deleted_count += 1
+                        logger.info(f"Position gelöscht: {path}")
+
+                    elif "folder" in tags and len(tags) > 1:
+                        folder_path = Path(tags[1])
+                        shutil.rmtree(folder_path)
+                        deleted_count += 1
+                        logger.info(f"Ordner gelöscht: {folder_path}")
+
+                except Exception as e:
+                    errors.append(str(e))
+                    logger.error(f"Fehler beim Löschen: {e}")
+
+            # Feedback
+            if deleted_count > 0:
+                self.refresh(self.current_project_manager)
+
+            if errors:
+                messagebox.showerror(
+                    "Fehler",
+                    f"{deleted_count} Element(e) gelöscht.\n\nFehler bei {len(errors)} Element(en):\n" + "\n".join(
+                        errors[:3])
+                )
+
+            return
+
+        # Single-Select: Original-Logik
         item_id = selection[0]
         tags = self.tree.item(item_id, "tags")
-        
+
         # Position löschen
         if "position" in tags and len(tags) > 1:
             path = Path(tags[1])
-            
+
             # Sicherheitsabfrage
             result = messagebox.askyesno(
                 "Position löschen",
                 f"Möchten Sie diese Position wirklich löschen?\n\n{path.name}\n\nDieser Vorgang kann nicht rückgängig gemacht werden!"
             )
-            
+
             if not result:
                 return
-            
+
             try:
                 path.unlink()
                 logger.info(f"Position gelöscht: {path}")
-                
+
                 # Callback aufrufen (damit Tab geschlossen wird)
                 if self.on_position_deleted:
                     self.on_position_deleted(path)
-                
-                self.refresh(None)
-                
+
+                self.refresh(self.current_project_manager)
+
             except Exception as e:
                 messagebox.showerror("Fehler", f"Löschen fehlgeschlagen:\n{e}")
-        
+
         # Ordner löschen
         elif "folder" in tags and len(tags) > 1:
             folder_path = Path(tags[1])
-            
+
             # Prüfe ob Ordner leer ist
             if any(folder_path.iterdir()):
                 result = messagebox.askyesno(
@@ -442,14 +510,15 @@ class ProjectExplorer(ttk.Frame):
                     "Ordner löschen",
                     f"Möchten Sie den Ordner '{folder_path.name}' wirklich löschen?"
                 )
-            
+
             if not result:
                 return
-            
+
             try:
                 shutil.rmtree(folder_path)
                 logger.info(f"Ordner gelöscht: {folder_path}")
-                self.refresh(None)
-                
+                self.refresh(self.current_project_manager)
+
             except Exception as e:
-                messagebox.showerror("Fehler", f"Ordner löschen fehlgeschlagen:\n{e}")
+                messagebox.showerror(
+                    "Fehler", f"Ordner löschen fehlgeschlagen:\n{e}")

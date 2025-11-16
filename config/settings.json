@@ -1,19 +1,27 @@
 {
   "recent_projects": [
-    "/Users/maximilianstark/Library/Mobile Documents/com~apple~CloudDocs/Dokumente/Studium Gesamt/Studium/8. Semester/Python/Statikprogramm/Projekte/Demo_Wohnhaus",
-    "/Users/maximilianstark/Library/Mobile Documents/com~apple~CloudDocs/Dokumente/Studium Gesamt/Studium/8. Semester/Python/Statikprogramm/Projekte/Für_Felix",
-    "/Users/maximilianstark/Library/Mobile Documents/com~apple~CloudDocs/Dokumente/Studium Gesamt/Studium/8. Semester/Python/Statikprogramm/Projekte/Test",
-    "/Users/maximilianstark/Library/Mobile Documents/com~apple~CloudDocs/Dokumente/Studium Gesamt/Studium/8. Semester/Python/Statikprogramm/Projekte/Test2",
-    "/Users/maximilianstark/Library/Mobile Documents/com~apple~CloudDocs/Dokumente/Studium Gesamt/Studium/8. Semester/Python/Statikprogramm/Projekte/Test Spontii",
-    "/Users/maximilianstark/Library/Mobile Documents/com~apple~CloudDocs/Dokumente/Studium Gesamt/Studium/8. Semester/Python/Statikprogramm/Projekte/Schnellstart_20251023_174105",
-    "/Users/maximilianstark/Library/Mobile Documents/com~apple~CloudDocs/Dokumente/Studium Gesamt/Studium/8. Semester/Python/Statikprogramm/Projekte/Schnellstart_20251023_173539",
-    "/Users/maximilianstark/Library/Mobile Documents/com~apple~CloudDocs/Dokumente/Studium Gesamt/Studium/8. Semester/Python/Statikprogramm/Projekte/Testprojekt_",
-    "/Users/test/Projekte/Projekt2",
-    "/Users/test/Projekte/Projekt1"
+    {
+      "uuid": "81c4be4f-63cc-4525-8cf2-be387cb34b82",
+      "path": "/Users/maximilianstark/Library/Mobile Documents/com~apple~CloudDocs/Dokumente/Studium Gesamt/Studium/8. Semester/Python/Statikprogramm/Projekte/Demo_Wohnhaus",
+      "name": "Demo Wohnhaus",
+      "last_opened": "2025-11-16T19:45:04.928840"
+    },
+    {
+      "uuid": "2a838fa1-498b-4ecf-b22f-4b0af0fb838b",
+      "path": "/Users/maximilianstark/Library/Mobile Documents/com~apple~CloudDocs/Dokumente/Studium Gesamt/Studium/8. Semester/Python/Statikprogramm/Projekte/Für_Felix",
+      "name": "Für Felix",
+      "last_opened": "2025-11-16T19:08:57.212191"
+    },
+    {
+      "uuid": "migrated",
+      "path": "/Users/maximilianstark/Library/Mobile Documents/com~apple~CloudDocs/Dokumente/Studium Gesamt/Studium/8. Semester/Python/Statikprogramm/Projekte/Schnellstart_20251023_173539",
+      "name": "Schnellstart_20251023_173539",
+      "last_opened": "unknown"
+    }
   ],
   "last_opened_project": "/Users/maximilianstark/Library/Mobile Documents/com~apple~CloudDocs/Dokumente/Studium Gesamt/Studium/8. Semester/Python/Statikprogramm/Projekte/Demo_Wohnhaus",
   "last_opened_position": null,
-  "window_geometry": "1948x949+4+43",
+  "window_geometry": "2560x949+0+69",
   "ui_preferences": {
     "explorer_width": 250,
     "theme": "default",
@@ -22,5 +30,6 @@
   "auto_save": {
     "enabled": true,
     "interval_seconds": 300
-  }
+  },
+  "last_project_dir": "/Users/maximilianstark/Library/Mobile Documents/com~apple~CloudDocs/Dokumente/Studium Gesamt/Studium/8. Semester/Python/Statikprogramm/Projekte"
 }

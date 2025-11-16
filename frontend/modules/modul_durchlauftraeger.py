@@ -4,7 +4,7 @@ Wrapper um die bestehende Eingabemaske-Klasse.
 """
 
 import tkinter as tk
-from tkinter import ttk
+import customtkinter as ctk
 from typing import Dict, Any, Optional
 import logging
 
@@ -35,7 +35,7 @@ class ModulDurchlauftraeger(BaseModule):
     def create_gui(self, parent_frame: tk.Frame) -> tk.Frame:
         """Erstellt die vollständige Eingabemaske-GUI"""
         
-        self.gui_frame = ttk.Frame(parent_frame)
+        self.gui_frame = ctk.CTkFrame(parent_frame)
         self.gui_frame.pack(fill="both", expand=True)
         
         logger.info(f"🔨 create_gui aufgerufen, parent_frame: {parent_frame}")
@@ -57,17 +57,17 @@ class ModulDurchlauftraeger(BaseModule):
             logger.error(f"Fehler beim Erstellen der Eingabemaske-GUI: {e}")
             
             # Fallback: Fehler anzeigen
-            error_frame = ttk.Frame(self.gui_frame)
+            error_frame = ctk.CTkFrame(self.gui_frame)
             error_frame.pack(fill="both", expand=True, padx=20, pady=20)
             
-            ttk.Label(error_frame, 
-                     text="⚠️ Fehler beim Laden der Eingabemaske",
-                     font=("", 12, "bold"),
-                     foreground="red").pack(pady=10)
+            ctk.CTkLabel(error_frame, 
+                        text="⚠️ Fehler beim Laden der Eingabemaske",
+                        font=("", 12, "bold"),
+                        text_color="red").pack(pady=10)
             
-            ttk.Label(error_frame, 
-                     text=str(e),
-                     font=("", 10)).pack(pady=5)
+            ctk.CTkLabel(error_frame, 
+                        text=str(e),
+                        font=("", 10)).pack(pady=5)
         
         return self.gui_frame
     

@@ -1,8 +1,10 @@
 import tkinter as tk
 from tkinter import ttk
+import customtkinter as ctk
 import logging
+import io
 import threading
-from PIL import ImageTk
+from PIL import Image, ImageTk
 
 logger = logging.getLogger(__name__)
 
@@ -19,24 +21,39 @@ class LastkombiAnzeiger:
         from frontend.gui.theme_config import ThemeManager
         self.latex_cache = LaTeXImageCache()
         self._current_mode = ThemeManager._current_mode
+        self._last_data = None  # Speichere letzte Daten für Refresh
+
+        # Theme-Callback registrieren: Cache leeren UND neu rendern bei Theme-Wechsel
+        ThemeManager.register_theme_callback(self._on_theme_change)
 
         # Frames für die Anzeige erstellen
-        self.frame_lastkombi = ttk.LabelFrame(
-            parent_frame, text="Lastkombinationen", padding=10)
-        self.frame_lastkombi.pack(fill="both", expand=True, padx=10, pady=10)
+        self.frame_kombi = ctk.CTkFrame(self.parent_frame)
+        self.frame_kombi.pack(fill="both", expand=True, padx=10, pady=10)
 
-        # WICHTIG: ttk.Frame nutzt automatisch richtige Theme-Farbe!
-        self.latex_frame_lastkombination = ttk.Frame(self.frame_lastkombi)
-        self.latex_frame_lastkombination.pack(fill="both", expand=True)
+        # Titel-Label
+        from frontend.gui.theme_config import ThemeManager
+        fonts = ThemeManager.get_fonts()
+        ctk.CTkLabel(self.frame_kombi, text="Lastkombination",
+                     font=fonts['heading']).pack(pady=5)
 
-        self.frame_ed = ttk.LabelFrame(
-            parent_frame, text="Bemessungslast Ed", padding=10)
+        self.latex_frame_lastkombination = ctk.CTkFrame(self.frame_kombi)
+        self.latex_frame_lastkombination.pack(
+            fill="both", expand=True, padx=10, pady=10)
+
+        self.frame_ed = ctk.CTkFrame(self.parent_frame)
         self.frame_ed.pack(fill="both", expand=True, padx=10, pady=10)
-        self.latex_frame_bemessungslast = ttk.Frame(self.frame_ed)
-        self.latex_frame_bemessungslast.pack(fill="both", expand=True)
+
+        # Titel-Label
+        ctk.CTkLabel(self.frame_ed, text="Bemessungslast Ed",
+                     font=fonts['heading']).pack(pady=5)
+
+        self.latex_frame_bemessungslast = ctk.CTkFrame(self.frame_ed)
+        self.latex_frame_bemessungslast.pack(
+            fill="both", expand=True, padx=10, pady=10)
 
     def update(self, latex_kombis: dict, callback=None):
         """Startet die Bilderzeugung in einem Hintergrund-Thread."""
+        self._last_data = latex_kombis  # Speichere für Theme-Wechsel
         thread = threading.Thread(
             target=self._run_update_in_thread, args=(latex_kombis, callback))
         thread.daemon = True
@@ -74,24 +91,59 @@ class LastkombiAnzeiger:
         self._clear_frames()
         self.tk_images.clear()
 
-        for typ, img in bilder:
-            tk_bild = ImageTk.PhotoImage(img)
+        # Zentrale Skalierung: global + Breitenbeschränkung
+        from frontend.gui.theme_config import ThemeManager
+        from frontend.gui.latex_renderer import scale_images_uniform
+
+        LATEX_SCALE_FACTOR = ThemeManager.get_latex_scale()
+
+        # Nur die Bilder extrahieren (ohne Typen)
+        images_only = [img for _, img in bilder]
+
+        # Zentral skalieren (global + auf längste begrenzt)
+        scaled_images = scale_images_uniform(images_only, LATEX_SCALE_FACTOR)
+
+        # Maximale Bildbreite ermitteln und für System-Anpassung speichern
+        max_width = 0
+        for img in scaled_images:
+            if img and img.width > max_width:
+                max_width = img.width
+
+        # An Eingabemaske weitergeben für System-Breite
+        if hasattr(self.eingabemaske, 'max_formula_width'):
+            self.eingabemaske.max_formula_width = max_width
+
+        # Mit Typen wieder kombinieren
+        for (typ, _), scaled_img in zip(bilder, scaled_images):
+            if scaled_img is None:
+                continue
+
+            tk_bild = ImageTk.PhotoImage(scaled_img)
             self.tk_images.append(tk_bild)
             parent_frame = self.latex_frame_lastkombination if typ == "kombi" else self.latex_frame_bemessungslast
 
-            # ttk.Label nutzt automatisch richtige Theme-Farbe!
-            label = ttk.Label(parent_frame, image=tk_bild)
+            # CustomTkinter-Label für Bilder (ImageTk), BG kommt vom CTkFrame
+            label = ctk.CTkLabel(parent_frame, text="", image=tk_bild)
             label.image = tk_bild
             label.pack(anchor="w", pady=2)
 
         if callback:
             callback()
 
+    def _on_theme_change(self):
+        """Callback für Theme-Wechsel: Cache leeren und Bilder neu rendern."""
+        self.latex_cache.clear()
+        if self._last_data:
+            # Neu rendern mit gespeicherten Daten
+            self.update(self._last_data)
+
     def zeige_fehler(self, e):
         self._clear_frames()
-        label = ttk.Label(self.latex_frame_lastkombination,
-                          text=f"⚠️ Fehler: {e}")
-        label.pack()
+        from frontend.gui.theme_config import ThemeManager
+        label = ctk.CTkLabel(self.latex_frame_lastkombination,
+                             text=f"⚠️ Fehler: {e}",
+                             text_color=ThemeManager.COLORS['accent_red'])
+        label.pack(anchor="w", pady=2)
 
     def _clear_frames(self):
         for widget in self.latex_frame_lastkombination.winfo_children():
@@ -123,7 +175,7 @@ class LastkombiAnzeiger:
             if img is None:
                 # Neu rendern: MIT TRANSPARENZ (hohe Qualität!)
                 img = render_latex_transparent(
-                    latex_str, fg_hex, dpi=200, fontsize=5)
+                    latex_str, fg_hex, dpi=1000, fontsize=5)
                 if img:
                     self.latex_cache.put(
                         latex_str, mode, cache_key_bg, fg_hex, img)
