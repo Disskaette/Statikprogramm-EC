@@ -30,11 +30,29 @@ export function useProjects() {
 // Positions within a project
 // ---------------------------------------------------------------------------
 
+/**
+ * API response shape for the positions endpoint (since Phase 6).
+ * The endpoint now returns `{ positions: [...], folders: [...] }` instead of
+ * a flat Position[].
+ */
+interface PositionsResponse {
+  positions: Position[];
+  folders: string[];
+}
+
 export function usePositions(projectId: string | null) {
   return useQuery({
     queryKey: ["positions", projectId],
-    queryFn: () =>
-      api.get<Position[]>(`/api/projects/${projectId}/positions`),
+    queryFn: async () => {
+      const raw = await api.get<PositionsResponse | Position[]>(
+        `/api/projects/${projectId}/positions`,
+      );
+      // Handle both old (plain array) and new (object) response formats
+      if (Array.isArray(raw)) {
+        return { positions: raw, folders: [] as string[] };
+      }
+      return raw;
+    },
     enabled: !!projectId,
     staleTime: 30_000,
   });

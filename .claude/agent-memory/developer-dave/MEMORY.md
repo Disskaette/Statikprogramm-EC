@@ -134,6 +134,72 @@
 - Field boundary x-coords used both for SVG tick marks AND Plotly shape vertical dashed lines
 - ResultsPanel: ForceCharts rendered in a `<section>` between EC5NachweiseCard and LastkombinationenCard
 
+## Project Explorer / Phase 5 (completed, build ✅, browser tested ✅, committed ed838f0)
+- `src/types/project.ts` – Project + Position interfaces
+- `src/stores/useProjectStore.ts` – Zustand store: currentProjectId, currentPositionPath, isDirty
+- `src/hooks/useProjects.ts` – React Query: useProjects() + usePositions(projectId), staleTime: 30_000
+- `src/hooks/useProjectActions.ts` – loadPosition(), savePosition(), createPosition(); invalidates query cache
+- `src/components/sidebar/ProjectExplorer.tsx` – sidebar: project dropdown, position list grouped by subfolder, save/new-position bar
+- `src/components/sidebar/` directory created
+- **loadFromRequest** added to useBeamStore – bulk-updates all form fields from CalculationRequest shape
+  - Derives feldanzahl + kragarm flags by counting/inspecting keys in req.spannweiten
+  - Replicates active variant to all 3 variant slots; resets activeVariant = 1
+  - Sets deflection.situation = "Eigene Werte" (saved positions don't store preset label)
+  - Always clears results + calculationError after loading
+- **isDirty tracking**: InputForm.tsx useEffect now calls setDirty(true) on any form change
+  - setDirty(false) called by savePosition() after successful PUT
+  - setDirty(false) called by setCurrentPosition() in useProjectStore
+- **Position save format**: PUT body = `{modules: {durchlauftraeger: <CalculationRequest>}, active_module: "durchlauftraeger"}`
+- **Vite fix**: Added `optimizeDeps.include` + `build.commonjsOptions` for `plotly.js-dist-min` (CJS module without ES default export was causing Rollup build failure)
+- **Subfolder grouping**: getSubfolder() splits relativePath on "/" – root-level positions get folder=""
+- **Dirty indicator**: amber dot (●) next to position name in sidebar bottom bar when isDirty
+- **Edge case**: Positions with `durchlauftraeger: null` don't reset form (loadFromRequest skipped)
+  → Known limitation, acceptable for now; form retains previous values
+
+## Projects API – Extended Routes (Phase 6, browser tested ✅)
+- **New endpoints** (all in `web/api/routes/projects.py`):
+  - `DELETE /{project_id}/positions/{path:path}` – delegates to `pm.delete_position()`
+  - `PATCH  /{project_id}/positions/{path:path}/rename` – updates JSON + renames file + syncs project.json
+  - `POST   /{project_id}/positions/{path:path}/duplicate` – shutil.copy2 + `_Kopie[_N]` suffix + syncs project.json
+  - `PATCH  /{project_id}/positions/{path:path}/move` – shutil.move + creates target dir + syncs project.json
+  - `POST   /{project_id}/folders` – mkdir(parents=True, exist_ok=False) + path traversal guard
+  - `DELETE /{project_id}/folders/{path:path}` – shutil.rmtree + cleans project.json positions
+- **list_positions** now returns `{positions: [...], folders: [...]}` (was plain list)
+- **Path traversal guard**: `_assert_inside_project()` – resolved_path.resolve().relative_to(project_path.resolve())
+- **Filename generation**: `_build_position_filename()` mirrors `PositionModel.get_filename()` exactly
+- All operations: open_project(project_path) before pm calls, run_in_executor for sync I/O
+- **⚠️ CRITICAL: Route ordering** – specific sub-routes (rename, duplicate, move) MUST be registered
+  BEFORE the catch-all `{position_path:path}` routes. Otherwise FastAPI absorbs the suffix into
+  the path parameter and returns 405 Method Not Allowed. Fixed by reordering routes in projects.py.
+
+## Project Explorer – Full Features (Phase 6, browser tested ✅)
+- `src/components/sidebar/ProjectExplorer.tsx` – ~850 lines, complete rewrite from Phase 5
+- **Tree View**: `buildFolderTree(positions, folders)` → recursive `FolderNode` tree; `FolderGroup` recursive component
+- **Context Menu**: position (Öffnen, Neuer Ordner, Umbenennen, Duplizieren, Löschen), folder (Neuer Ordner, Löschen), multi-select (Löschen N Elemente)
+- **Multi-Select**: Click (single), Ctrl/Cmd+Click (toggle), Shift+Click (range via visiblePaths + anchor ref)
+- **Drag & Drop**: Manual mouse events (mousedown/mousemove/mouseup), 5px threshold, `data-folder-path` attributes for drop targets
+- **Dialog state**: Union type `DialogState` with variants for each dialog type
+- **Sub-components**: PositionItem, FolderGroup (recursive), InlineInput, NewPositionForm
+- `src/hooks/useProjectActions.ts` – 11 actions: load/save/create/delete/rename/duplicate/move + bulk delete + folder create/delete
+- `src/hooks/useProjects.ts` – handles both old (Position[]) and new ({positions, folders}) response format
+- **Unicode gotcha**: Subagents may write `\u00f6` instead of `ö` – always check and replace unicode escapes in German text
+
+## Git Commit History (Web Migration)
+- `ed838f0` Phase 5 – Project Explorer sidebar
+- `c4a20e9` Phase 4 – Force diagrams (Plotly.js)
+- `24b5326` Phase 3 – Results display (EC5, KaTeX, Lastkombis)
+- `953a55e` Phase 2 – Complete input form (32+ fields)
+- `e9614ca` Phase 1 – FastAPI + React foundation
+
+## UI Component Library (src/components/ui/)
+- `ContextMenu.tsx` – portal via ReactDOM.createPortal; boundary detection; dismiss: mousedown outside (capture), Escape (capture), scroll (capture)
+- `ConfirmDialog.tsx` – native `<dialog>` + showModal()/close(); danger prop = red button; backdrop click closes
+- `InputDialog.tsx` – native `<dialog>`; auto-focus + select on open via requestAnimationFrame; Enter submits, empty input disables confirm
+- **Pattern**: useEffect on `open` prop calls dialog.showModal()/close(); separate useEffect intercepts "cancel" event (Escape) to call onCancel instead of browser default
+- `api.ts` – has get, post, put, patch, delete, del (alias for delete)
+- `FolderNode` interface in `src/types/project.ts` – recursive tree for explorer
+- `useProjectStore` – selectedPaths (string[]), isDragging, dragPaths + toggleSelection(path, multiSelect), clearSelection(), setDragging(bool, paths?)
+
 ## Critical API Response Format Pitfalls
 - **schnittgroessen.GZT**: Object `{max: {moment, querkraft, durchbiegung}, moment: [...], ...}`
 - **schnittgroessen.GZG**: **ARRAY** `[{max: {durchbiegung}, lastfall, kommentar, moment: [...], ...}]` – one entry per load

@@ -26,6 +26,25 @@ export interface Project {
 }
 
 // ---------------------------------------------------------------------------
+// Folder tree (client-side, built from Position.relative_path strings)
+// ---------------------------------------------------------------------------
+
+/**
+ * Recursive folder node used to render the project explorer tree.
+ * Built client-side from the flat `positions` array returned by the API.
+ */
+export interface FolderNode {
+  /** Display name of the folder (last segment of relativePath, or "" for root) */
+  name: string;
+  /** Path relative to the project root, e.g. "EG" or "EG/Decke" */
+  relativePath: string;
+  /** Positions whose relative_path is directly inside this folder */
+  positions: Position[];
+  /** Nested sub-folders */
+  subfolders: FolderNode[];
+}
+
+// ---------------------------------------------------------------------------
 // Position
 // ---------------------------------------------------------------------------
 
