@@ -1,0 +1,16 @@
+.git/
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+node_modules/
+web/frontend/node_modules/
+web/frontend/dist/
+.DS_Store
+Projekte/
+Bilder/
+*.xlsx
+.claude/
+docs/
+config/
+frontend/

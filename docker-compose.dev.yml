@@ -1,0 +1,22 @@
+# Development docker-compose for local testing.
+#
+# Usage:
+#   docker compose -f docker-compose.dev.yml up --build
+#
+# This builds the full production image (frontend + backend) and
+# exposes it on http://localhost:8000.
+#
+# For active development, prefer running the services separately:
+#   Terminal 1: python3.12 -m uvicorn web.api.main:app --reload --port 8000
+#   Terminal 2: cd web/frontend && npm run dev
+
+services:
+  statik:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "8000:8000"
+    environment:
+      - PYTHONUNBUFFERED=1
+    restart: unless-stopped
