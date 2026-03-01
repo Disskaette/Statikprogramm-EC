@@ -44,20 +44,36 @@ export function useCalculation() {
     },
   });
 
+  // Keep a stable ref to mutation.mutate so that triggerCalculation never
+  // needs to list `mutation` as a useCallback dependency.  Without this,
+  // every mutation status change (idle→pending→success→idle) would produce a
+  // new triggerCalculation identity, which would re-fire the useEffect in
+  // InputForm that lists triggerCalculation as a dependency – causing an
+  // infinite calculation loop.
+  const mutateRef = useRef(mutation.mutate);
+  mutateRef.current = mutation.mutate;
+
   /**
    * Call this whenever any form value changes.
-   * The actual API request is debounced by DEBOUNCE_MS ms so rapid changes
-   * (e.g. typing a span length digit by digit) only trigger one calculation.
+   * - Debounced by DEBOUNCE_MS ms so rapid keystrokes only trigger one call.
+   * - Stable function reference (empty deps) – does NOT cause useEffect loops.
+   * - Skips the request if a calculation is already in flight (prevents the
+   *   server from being flooded with parallel EC-Kombinatorik calculations,
+   *   each of which can take 5–10 s for large beams).
    */
   const triggerCalculation = useCallback(() => {
     if (timerRef.current) {
       clearTimeout(timerRef.current);
     }
     timerRef.current = setTimeout(() => {
+      // Do not start a new request while the previous one is still running.
+      // EC-Kombinatorik calculations are CPU-heavy; concurrent duplicates
+      // would overload the server.
+      if (useBeamStore.getState().isCalculating) return;
       const request = useBeamStore.getState().buildRequest();
-      mutation.mutate(request);
+      mutateRef.current(request);
     }, DEBOUNCE_MS);
-  }, [mutation]);
+  }, []); // Empty deps – triggerCalculation is now a stable reference
 
   return { triggerCalculation, ...mutation };
 }
