@@ -1,5 +1,6 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Layout } from "@/components/layout/Layout";
+import { InputForm } from "@/components/input/InputForm";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -25,16 +26,8 @@ function App() {
           </div>
         }
       >
-        <div className="flex h-full items-center justify-center">
-          <div className="text-center space-y-4">
-            <h1 className="text-3xl font-bold">Statik-Tool v2.0</h1>
-            <p className="text-[var(--muted-foreground)]">
-              Durchlauftr&auml;ger-Berechnung nach EC5
-            </p>
-            <p className="text-sm text-[var(--muted-foreground)]">
-              Willkommen! Die Eingabemaske wird in Phase 2 implementiert.
-            </p>
-          </div>
+        <div className="p-6 max-w-4xl mx-auto">
+          <InputForm />
         </div>
       </Layout>
     </QueryClientProvider>

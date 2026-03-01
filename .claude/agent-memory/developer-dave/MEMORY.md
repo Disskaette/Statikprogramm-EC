@@ -87,4 +87,24 @@
 - **Directories**: `src/components/{ui,layout,input,results}`, `src/hooks`, `src/stores`, `src/types`
 - **TS Gotcha**: `erasableSyntaxOnly: true` in tsconfig – cannot use `public` constructor params;
   must declare class fields explicitly (affects ApiError and any future classes)
-- **Build**: `npm run build` → `dist/` (503ms, zero errors verified)
+- **Build**: `npm run build` → `dist/` (zero errors verified)
+- **Types**: `src/types/beam.ts` – all TS interfaces (LoadCase, CrossSectionVariant, DeflectionLimits, CalculationRequest/Response, EC5Nachweis)
+- **Store**: `src/stores/useBeamStore.ts` – Zustand store, single source of truth for form state; buildRequest() assembles API payload
+- **Hooks**: `src/hooks/useMaterials.ts` – React Query hooks (staleTime: Infinity) for DB lookups
+- **Hooks**: `src/hooks/useCalculation.ts` – useMutation hook with 600ms debounce; writes results to store
+- **DEFLECTION_PRESETS**: exported const in beam.ts – Allgemein: {300,200,300}, Überhöht: {200,150,250}
+- **buildRequest() NKL convention**: cross-section NKL taken from lasten[0].nkl (all loads share same service class)
+
+## Input Form Components (NEW – Phase 2 completed, build ✅)
+- `src/lib/format.ts` – parseGermanNumber("7,41" → 7.41), formatNumber(de-DE locale)
+- `src/components/input/CalculationModeToggle.tsx` – pill toggle, ecModus true/false
+- `src/components/input/SystemSection.tsx` – Sprungmaß, Feldanzahl stepper, Kragarme, dynamic SpanRow sub-component with local raw string state
+- `src/components/input/LoadRow.tsx` – single load row with cascading lastfall→kategorie dropdowns; useEffect auto-selects first kategorie when lastfall changes
+- `src/components/input/LoadsSection.tsx` – loads table + NKL global selector (updates all loads) + Eigengewicht checkbox (finds first g-load by index)
+- `src/components/input/CrossSectionSection.tsx` – 3 variant columns (VariantColumn sub-component) with cascading materialgruppe→typ→festigkeitsklasse + dimension inputs
+- `src/components/input/DeflectionSection.tsx` – situation dropdown switches between presets (read-only) and "Eigene Werte" (editable); rawValues state synced via useEffect on situation change
+- `src/components/input/InputForm.tsx` – assembles all sections; auto-triggers calculation via useEffect watching JSON.stringify of store slices; skips first render via useRef(true)
+- Pattern for local raw string: useState(String(storeValue)) + onChange updates raw + store, onBlur resets raw to String(storeValue)
+- SpanRow in SystemSection uses this pattern – important for decimal comma input
+- JSON.stringify(...) used as useEffect dependency for object/array comparison (pragmatic, avoids deep-equal library)
+- App.tsx updated: imports InputForm, renders inside `<div className="p-6 max-w-4xl mx-auto">`
