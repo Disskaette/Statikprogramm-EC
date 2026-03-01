@@ -129,6 +129,7 @@ async def health_check() -> dict[str, str]:
         "status": "ok",
         "materials": str(len(db.materialien)),
         "kmod_entries": str(len(db.kmod)),
+        "spa": "StaticFiles-html-True",  # identifies this code version
     }
 
 
