@@ -38,13 +38,21 @@ jobs:
             set -e
 
             # ── Repo holen oder updaten ───────────────────────────────────
+            # git reset --hard discards any local edits on the VPS (e.g. manual
+            # hotfixes or merge conflicts). The repo is managed exclusively via
+            # CI – local edits must not block deploys or silently stay in place.
             if [ -d "/root/statikprogramm/.git" ]; then
               cd /root/statikprogramm
-              git pull https://x-access-token:$GITHUB_TOKEN@github.com/Disskaette/Statikprogramm-EC.git main
+              git fetch https://x-access-token:$GITHUB_TOKEN@github.com/Disskaette/Statikprogramm-EC.git main
+              git reset --hard FETCH_HEAD
             else
               git clone https://x-access-token:$GITHUB_TOKEN@github.com/Disskaette/Statikprogramm-EC.git /root/statikprogramm
               cd /root/statikprogramm
             fi
+
+            # ── Verify key file is current ────────────────────────────────
+            echo "--- main.py last 5 lines (SPA mount check) ---"
+            tail -10 /root/statikprogramm/web/api/main.py
 
             # ── Projekte-Verzeichnis sicherstellen (persistentes Volume) ──
             mkdir -p /root/statikprogramm/Projekte
