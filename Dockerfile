@@ -11,6 +11,16 @@ WORKDIR /app/frontend
 COPY web/frontend/package*.json ./
 RUN npm ci
 COPY web/frontend/ ./
+
+# Sub-path routing for stark-tools portal:
+#   VITE_BASE_URL=/statik/    → Vite embeds /statik/assets/... in index.html
+#   VITE_API_BASE_URL=/statik → React prepends /statik to all /api/... calls
+# nginx proxies /statik/ → FastAPI root (strips prefix via trailing slash).
+# Default "/" works for standalone/development deployments.
+ARG VITE_BASE_URL=/statik/
+ARG VITE_API_BASE_URL=/statik
+ENV VITE_BASE_URL=${VITE_BASE_URL}
+ENV VITE_API_BASE_URL=${VITE_API_BASE_URL}
 RUN npm run build
 
 # ---- Stage 2: Python backend + serve built frontend ----

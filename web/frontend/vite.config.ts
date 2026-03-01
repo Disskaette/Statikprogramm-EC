@@ -4,6 +4,11 @@ import tailwindcss from "@tailwindcss/vite";
 import path from "path";
 
 export default defineConfig({
+  // Base URL for asset paths in the production build.
+  // Set VITE_BASE_URL=/statik/ when building for the stark-tools portal
+  // so that nginx can proxy /statik/ → FastAPI at root (prefix-stripping via
+  // trailing slash in proxy_pass). Falls back to "/" for local development.
+  base: process.env.VITE_BASE_URL ?? "/",
   plugins: [react(), tailwindcss()],
   resolve: {
     alias: {

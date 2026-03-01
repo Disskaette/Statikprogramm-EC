@@ -185,6 +185,7 @@
 - **Unicode gotcha**: Subagents may write `\u00f6` instead of `ö` – always check and replace unicode escapes in German text
 
 ## Git Commit History (Web Migration)
+- `685fbb2` Phase 6 – Full project management (context menu, drag&drop, multi-select, folders)
 - `ed838f0` Phase 5 – Project Explorer sidebar
 - `c4a20e9` Phase 4 – Force diagrams (Plotly.js)
 - `24b5326` Phase 3 – Results display (EC5, KaTeX, Lastkombis)
@@ -199,6 +200,18 @@
 - `api.ts` – has get, post, put, patch, delete, del (alias for delete)
 - `FolderNode` interface in `src/types/project.ts` – recursive tree for explorer
 - `useProjectStore` – selectedPaths (string[]), isDragging, dragPaths + toggleSelection(path, multiSelect), clearSelection(), setDragging(bool, paths?)
+
+## Production Deployment (stark-tools Portal)
+
+- **URL**: `https://tools.askbenstark.com/statik/`
+- **Container**: `stark-statik` (python:3.12-slim, FastAPI + React SPA, Port 8000)
+- **Docker**: Teil von stark-tools docker-compose.yml; Deploy via Push auf stark-tools main
+- **Build-Context auf VPS**: `/root/statikprogramm/` (geclont von Disskaette/Statikprogramm-EC)
+- **Sub-Path-Routing**: nginx proxied `/statik/` → FastAPI `:8000/` (trailing slash strippt Präfix)
+- **Vite**: `VITE_BASE_URL=/statik/` (assets), `VITE_API_BASE_URL=/statik` (API-Calls)
+- **Projekte**: Volume-Mount `/root/statikprogramm/Projekte/` → `/app/Projekte/`
+- **Rollen**: `felix` (felix_k) + `admin` sehen die Kachel
+- **Dockerfile**: Multi-Stage (node:22-alpine für Vite-Build, python:3.12-slim für Runtime)
 
 ## Critical API Response Format Pitfalls
 - **schnittgroessen.GZT**: Object `{max: {moment, querkraft, durchbiegung}, moment: [...], ...}`
