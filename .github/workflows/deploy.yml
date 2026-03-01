@@ -62,6 +62,12 @@ jobs:
             # Falls dieser Container vor stark-tools deployed wird: selbst anlegen.
             docker network create stark-tools 2>/dev/null || true
 
+            # ── Docker aufräumen (VPS-Speicher freihalten) ────────────────
+            # Remove dangling images and stopped containers BEFORE building.
+            # Keeps VPS disk usage low across repeated deploys.
+            docker image prune -f
+            docker container prune -f
+
             # ── Docker Image bauen ────────────────────────────────────────
             # VITE_BASE_URL=/statik/  → index.html referenziert /statik/assets/...
             # VITE_API_BASE_URL=/statik → React ruft /statik/api/... auf

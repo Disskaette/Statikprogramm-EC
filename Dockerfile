@@ -27,10 +27,9 @@ RUN npm run build
 FROM python:3.12-slim
 WORKDIR /app
 
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    gcc \
-    && rm -rf /var/lib/apt/lists/*
-
+# All Python deps (numpy, pandas, matplotlib, Pillow, openpyxl) ship as
+# pre-built manylinux wheels on PyPI for linux/amd64 – gcc is not required.
+# Omitting apt-get gcc saves ~192 MB disk and avoids VPS out-of-space errors.
 COPY requirements-web.txt .
 RUN pip install --no-cache-dir -r requirements-web.txt
 
