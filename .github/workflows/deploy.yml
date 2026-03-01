@@ -1,0 +1,87 @@
+name: Deploy Statik-Tool
+
+# Deploys the Durchlaufträger web app to the stark-tools portal on every push to main.
+# The container runs independently of the stark-tools docker-compose stack –
+# it only needs to be in the "stark-tools" Docker network (created by compose or this workflow).
+#
+# Required GitHub Secrets (Settings → Secrets → Actions):
+#   SSH_HOST   – VPS IP address
+#   SSH_USER   – SSH username (e.g. root)
+#   SSH_KEY    – Private SSH key (matching the public key on the VPS)
+#
+# URL after deploy: https://tools.askbenstark.com/statik/
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    name: Deploy to VPS
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Deploy via SSH
+        uses: appleboy/ssh-action@v1.2.0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_KEY }}
+          envs: GITHUB_TOKEN
+          script: |
+            set -e
+
+            # ── Repo holen oder updaten ───────────────────────────────────
+            if [ -d "/root/statikprogramm/.git" ]; then
+              cd /root/statikprogramm
+              git pull https://x-access-token:$GITHUB_TOKEN@github.com/Disskaette/Statikprogramm-EC.git main
+            else
+              git clone https://x-access-token:$GITHUB_TOKEN@github.com/Disskaette/Statikprogramm-EC.git /root/statikprogramm
+              cd /root/statikprogramm
+            fi
+
+            # ── Projekte-Verzeichnis sicherstellen (persistentes Volume) ──
+            mkdir -p /root/statikprogramm/Projekte
+
+            # ── Docker-Netzwerk sicherstellen ─────────────────────────────
+            # Das Netzwerk wird normalerweise von stark-tools docker-compose verwaltet.
+            # Falls dieser Container vor stark-tools deployed wird: selbst anlegen.
+            docker network create stark-tools 2>/dev/null || true
+
+            # ── Docker Image bauen ────────────────────────────────────────
+            # VITE_BASE_URL=/statik/  → index.html referenziert /statik/assets/...
+            # VITE_API_BASE_URL=/statik → React ruft /statik/api/... auf
+            # nginx strippt /statik/ vor FastAPI (proxy_pass mit trailing slash).
+            docker build \
+              --build-arg VITE_BASE_URL=/statik/ \
+              --build-arg VITE_API_BASE_URL=/statik \
+              -t stark-statik \
+              /root/statikprogramm
+
+            # ── Alten Container stoppen und entfernen ─────────────────────
+            docker stop stark-statik 2>/dev/null || true
+            docker rm   stark-statik 2>/dev/null || true
+
+            # ── Neuen Container starten ───────────────────────────────────
+            docker run -d \
+              --name stark-statik \
+              --network stark-tools \
+              --restart unless-stopped \
+              -v /root/statikprogramm/Projekte:/app/Projekte:rw \
+              stark-statik
+
+            echo "Deploy abgeschlossen: $(date)"
+
+            # ── Schnelltest ───────────────────────────────────────────────
+            echo "--- Container Status ---"
+            docker ps --filter name=stark-statik
+            echo "--- Health Check (via Docker-Netzwerk) ---"
+            docker exec stark-statik \
+              python3 -c "import urllib.request; r=urllib.request.urlopen('http://localhost:8000/api/health', timeout=10); print('Health:', r.read().decode())" \
+              || echo "Health-Check fehlgeschlagen (Container startet noch?)"

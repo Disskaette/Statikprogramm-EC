@@ -205,13 +205,17 @@
 
 - **URL**: `https://tools.askbenstark.com/statik/`
 - **Container**: `stark-statik` (python:3.12-slim, FastAPI + React SPA, Port 8000)
-- **Docker**: Teil von stark-tools docker-compose.yml; Deploy via Push auf stark-tools main
-- **Build-Context auf VPS**: `/root/statikprogramm/` (geclont von Disskaette/Statikprogramm-EC)
+- **Deploy**: `.github/workflows/deploy.yml` in DIESEM Repo, Trigger: push auf main
+  → NICHT Teil von stark-tools docker-compose.yml (eigener unabhängiger Deploy!)
+- **Repo auf VPS**: `/root/statikprogramm/` (geclont von Disskaette/Statikprogramm-EC)
+- **Netzwerk**: Docker-Bridge `stark-tools` (geteilt mit stark-nginx, stark-auth etc.)
 - **Sub-Path-Routing**: nginx proxied `/statik/` → FastAPI `:8000/` (trailing slash strippt Präfix)
 - **Vite**: `VITE_BASE_URL=/statik/` (assets), `VITE_API_BASE_URL=/statik` (API-Calls)
+  → Diese Build-Args sind im Dockerfile als ARG/ENV definiert; NIEMALS entfernen!
 - **Projekte**: Volume-Mount `/root/statikprogramm/Projekte/` → `/app/Projekte/`
 - **Rollen**: `felix` (felix_k) + `admin` sehen die Kachel
 - **Dockerfile**: Multi-Stage (node:22-alpine für Vite-Build, python:3.12-slim für Runtime)
+- **Secrets im Repo nötig**: `SSH_HOST`, `SSH_USER`, `SSH_KEY` (Settings → Secrets → Actions)
 
 ## Critical API Response Format Pitfalls
 - **schnittgroessen.GZT**: Object `{max: {moment, querkraft, durchbiegung}, moment: [...], ...}`
