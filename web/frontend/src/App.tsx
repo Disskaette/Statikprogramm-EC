@@ -2,6 +2,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Layout } from "@/components/layout/Layout";
 import { InputForm } from "@/components/input/InputForm";
 import { ResultsPanel } from "@/components/results/ResultsPanel";
+import { ProjectExplorer } from "@/components/sidebar/ProjectExplorer";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -15,18 +16,7 @@ const queryClient = new QueryClient({
 function App() {
   return (
     <QueryClientProvider client={queryClient}>
-      <Layout
-        sidebar={
-          <div className="p-4">
-            <h2 className="text-sm font-semibold text-[var(--muted-foreground)] mb-3">
-              Projekt-Explorer
-            </h2>
-            <p className="text-xs text-[var(--muted-foreground)] italic">
-              Wird in Phase 5 implementiert
-            </p>
-          </div>
-        }
-      >
+      <Layout sidebar={<ProjectExplorer />}>
         {/* Two-column layout: input left, results right.
             On small screens both columns stack vertically. */}
         <div className="flex flex-col lg:flex-row gap-6 p-6">

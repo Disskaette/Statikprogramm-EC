@@ -106,6 +106,14 @@ interface BeamState {
   setIsCalculating: (v: boolean) => void;
   setCalculationError: (e: string | null) => void;
 
+  // ---- Actions: bulk load from saved position ----
+  /**
+   * Bulk-update all form fields from a CalculationRequest-shaped object.
+   * Used when loading a saved position from the project explorer.
+   * Clears any existing results after loading.
+   */
+  loadFromRequest: (req: Partial<CalculationRequest>) => void;
+
   // ---- Computed ----
   /**
    * Assembles the API request body from current state.
@@ -310,6 +318,96 @@ export const useBeamStore = create<BeamState>((set, get) => ({
   setResults: (r) => set({ results: r }),
   setIsCalculating: (v) => set({ isCalculating: v }),
   setCalculationError: (e) => set({ calculationError: e }),
+
+  // ---- Bulk load from saved position ----
+
+  loadFromRequest: (req: Partial<CalculationRequest>) => {
+    const state = get();
+    const updates: Partial<BeamState> = {};
+
+    // --- Calculation mode ---
+    if (req.berechnungsmodus !== undefined) {
+      updates.ecModus = req.berechnungsmodus.ec_modus ?? state.ecModus;
+    }
+
+    // --- Sprungmass ---
+    if (req.sprungmass !== undefined) {
+      updates.sprungmass = req.sprungmass;
+    }
+
+    // --- Spannweiten (span lengths) ---
+    // Derive feldanzahl + cantilever flags from the spannweiten dict keys.
+    if (req.spannweiten !== undefined) {
+      const spans = req.spannweiten;
+      updates.spannweiten = { ...spans };
+
+      const hasLeft = "kragarm_links" in spans;
+      const hasRight = "kragarm_rechts" in spans;
+      updates.kragarmLinks = hasLeft;
+      updates.kragarmRechts = hasRight;
+
+      // Count interior span keys (feld_1, feld_2, ...) to get feldanzahl
+      const feldKeys = Object.keys(spans).filter((k) => k.startsWith("feld_"));
+      const feldanzahl = Math.max(1, Math.min(5, feldKeys.length));
+      updates.feldanzahl = feldanzahl;
+    }
+
+    // --- Loads ---
+    if (req.lasten !== undefined) {
+      updates.lasten = req.lasten.map((l) => ({
+        lastfall: l.lastfall,
+        wert: l.wert,
+        kategorie: l.kategorie,
+        kommentar: l.kommentar,
+        nkl: l.nkl,
+        eigengewicht: l.eigengewicht,
+      }));
+    }
+
+    // --- Cross-section ---
+    if (req.querschnitt !== undefined) {
+      const qs = req.querschnitt;
+      updates.materialgruppe = qs.materialgruppe ?? state.materialgruppe;
+
+      // Populate all 3 variants with the stored data.
+      // The saved position only stores the active variant; we replicate it to
+      // all 3 slots so the comparison UI is not confusingly empty.
+      const loadedVariant: CrossSectionVariant = {
+        typ: qs.typ ?? state.variants[0].typ,
+        festigkeitsklasse:
+          qs.festigkeitsklasse ?? state.variants[0].festigkeitsklasse,
+        breite: qs.breite_qs ?? state.variants[0].breite,
+        hoehe: qs.hoehe_qs ?? state.variants[0].hoehe,
+      };
+      updates.variants = [
+        { ...loadedVariant },
+        { ...loadedVariant },
+        { ...loadedVariant },
+      ];
+      // Always start on variant 1 after loading
+      updates.activeVariant = 1;
+    }
+
+    // --- Deflection limits (SLS) ---
+    if (req.gebrauchstauglichkeit !== undefined) {
+      const gzt = req.gebrauchstauglichkeit;
+      updates.deflection = {
+        // Saved positions don't store the situation label; default to custom mode
+        // so the user sees their actual values rather than a preset name.
+        situation: "Eigene Werte",
+        w_inst: gzt.w_inst ?? state.deflection.w_inst,
+        w_fin: gzt.w_fin ?? state.deflection.w_fin,
+        w_net_fin: gzt.w_net_fin ?? state.deflection.w_net_fin,
+        w_c: gzt.w_c ?? state.deflection.w_c,
+      };
+    }
+
+    // Clear stale results – a loaded position should show a fresh state
+    updates.results = null;
+    updates.calculationError = null;
+
+    set(updates);
+  },
 
   // ---- Build API request ----
 

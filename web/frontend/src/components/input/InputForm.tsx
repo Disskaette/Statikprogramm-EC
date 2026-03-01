@@ -14,6 +14,7 @@
 import { useEffect, useRef } from "react";
 import { useBeamStore } from "@/stores/useBeamStore";
 import { useCalculation } from "@/hooks/useCalculation";
+import { useProjectStore } from "@/stores/useProjectStore";
 
 import { CalculationModeToggle } from "./CalculationModeToggle";
 import { SystemSection } from "./SystemSection";
@@ -96,6 +97,7 @@ function StatusBar() {
 
 export function InputForm() {
   const { triggerCalculation } = useCalculation();
+  const setDirty = useProjectStore((s) => s.setDirty);
 
   // Grab state fields that should trigger recalculation when they change.
   // We use a stable selector that serialises the relevant state into a string
@@ -118,6 +120,8 @@ export function InputForm() {
       isFirstRender.current = false;
       return;
     }
+    // Any form change marks the position as dirty (unsaved changes)
+    setDirty(true);
     triggerCalculation();
   }, [
     ecModus,
@@ -133,6 +137,7 @@ export function InputForm() {
     JSON.stringify(variants),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     JSON.stringify(deflection),
+    setDirty,
     triggerCalculation,
   ]);
 
