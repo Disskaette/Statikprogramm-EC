@@ -95,7 +95,7 @@
 - **DEFLECTION_PRESETS**: exported const in beam.ts – Allgemein: {300,200,300}, Überhöht: {200,150,250}
 - **buildRequest() NKL convention**: cross-section NKL taken from lasten[0].nkl (all loads share same service class)
 
-## Input Form Components (NEW – Phase 2 completed, build ✅)
+## Input Form Components (Phase 2 completed, build ✅)
 - `src/lib/format.ts` – parseGermanNumber("7,41" → 7.41), formatNumber(de-DE locale)
 - `src/components/input/CalculationModeToggle.tsx` – pill toggle, ecModus true/false
 - `src/components/input/SystemSection.tsx` – Sprungmaß, Feldanzahl stepper, Kragarme, dynamic SpanRow sub-component with local raw string state
@@ -105,6 +105,15 @@
 - `src/components/input/DeflectionSection.tsx` – situation dropdown switches between presets (read-only) and "Eigene Werte" (editable); rawValues state synced via useEffect on situation change
 - `src/components/input/InputForm.tsx` – assembles all sections; auto-triggers calculation via useEffect watching JSON.stringify of store slices; skips first render via useRef(true)
 - Pattern for local raw string: useState(String(storeValue)) + onChange updates raw + store, onBlur resets raw to String(storeValue)
-- SpanRow in SystemSection uses this pattern – important for decimal comma input
 - JSON.stringify(...) used as useEffect dependency for object/array comparison (pragmatic, avoids deep-equal library)
-- App.tsx updated: imports InputForm, renders inside `<div className="p-6 max-w-4xl mx-auto">`
+
+## Results Display Components (Phase 3 completed, build ✅)
+- `src/index.css` – adds `@import "katex/dist/katex.min.css"` (KaTeX fonts bundled by Vite)
+- `src/components/results/SchnittgroessenSummary.tsx` – compact horizontal card: M_Ed [kNm], V_Ed [kN], δ_max [mm] with KaTeX inline symbols
+- `src/components/results/EC5NachweiseCard.tsx` – 5 verification checks (biegung, schub, 3 deflection checks); utilisation bar green/amber/red; KaTeX display formula per check
+- `src/components/results/LastkombinationenCard.tsx` – collapsible, tabbed GZT/GZG load combinations; maßgebend badge; KaTeX formula per combination
+- `src/components/results/ResultsPanel.tsx` – main container: empty state, loading spinner, recalculating overlay, composes all result sub-components
+- `src/App.tsx` – two-column layout (lg:flex-row): input left (xl:w-2/5), results right (xl:w-3/5)
+- KaTeX LaTeX stripping: API wraps all formulae in `$…$`; must call `stripDelimiters()` before `katex.renderToString()` – handles both `$` and `$$`
+- Bar width formula: `min(eta / 1.5, 1) * 100%` – caps visual bar at 150% η so extreme failures remain readable
+- Unit conversions: Moments Nmm→kNm (÷1e6), Forces N→kN (÷1e3), Deflections stay mm – GZT for M/V, GZG for δ
