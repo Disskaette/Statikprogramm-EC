@@ -17,6 +17,7 @@ config/settings.json
 # IDE / Editor
 .vscode/
 .idea/
+.DS_Store
 *.swp
 *.swo
 .DS_Store
