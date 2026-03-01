@@ -81,7 +81,12 @@ jobs:
             # ── Schnelltest ───────────────────────────────────────────────
             echo "--- Container Status ---"
             docker ps --filter name=stark-statik
+
+            # Wait for uvicorn to finish starting (usually 2-4s)
+            echo "--- Warte auf uvicorn-Start (5s) ---"
+            sleep 5
+
             echo "--- Health Check (via Docker-Netzwerk) ---"
             docker exec stark-statik \
               python3 -c "import urllib.request; r=urllib.request.urlopen('http://localhost:8000/api/health', timeout=10); print('Health:', r.read().decode())" \
-              || echo "Health-Check fehlgeschlagen (Container startet noch?)"
+              || echo "Health-Check fehlgeschlagen – bitte Container-Logs prüfen: docker logs stark-statik"
