@@ -22,6 +22,7 @@ import { useBeamStore } from "@/stores/useBeamStore";
 import { SchnittgroessenSummary } from "./SchnittgroessenSummary";
 import { EC5NachweiseCard } from "./EC5NachweiseCard";
 import { LastkombinationenCard } from "./LastkombinationenCard";
+import { ForceCharts } from "./ForceCharts";
 
 // ---------------------------------------------------------------------------
 // Spinner
@@ -161,8 +162,18 @@ export function ResultsPanel() {
             <EC5NachweiseCard ec5Nachweise={results.ec5_nachweise} />
           )}
 
-          {/* 3. Load combinations (collapsible) */}
-          {(results.lastfallkombinationen ||
+          {/* 3. Section force diagrams (Schnittkraftverläufe) */}
+          {results.schnittgroessen && (
+            <section>
+              <h3 className="text-sm font-semibold text-[var(--foreground)] mb-2 uppercase tracking-wide">
+                Schnittkraftverläufe
+              </h3>
+              <ForceCharts />
+            </section>
+          )}
+
+          {/* 4. Load combinations (collapsible) */}
+          {(results.lastfallkombinationen ??
             results.gzg_lastfallkombinationen) && (
             <LastkombinationenCard
               lastfallkombinationen={results.lastfallkombinationen ?? null}

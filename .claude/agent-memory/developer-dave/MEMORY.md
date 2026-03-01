@@ -107,7 +107,7 @@
 - Pattern for local raw string: useState(String(storeValue)) + onChange updates raw + store, onBlur resets raw to String(storeValue)
 - JSON.stringify(...) used as useEffect dependency for object/array comparison (pragmatic, avoids deep-equal library)
 
-## Results Display Components (Phase 3 completed, build ✅)
+## Results Display Components (Phase 3 completed, tested ✅, committed)
 - `src/index.css` – adds `@import "katex/dist/katex.min.css"` (KaTeX fonts bundled by Vite)
 - `src/components/results/SchnittgroessenSummary.tsx` – compact horizontal card: M_Ed [kNm], V_Ed [kN], δ_max [mm] with KaTeX inline symbols
 - `src/components/results/EC5NachweiseCard.tsx` – 5 verification checks (biegung, schub, 3 deflection checks); utilisation bar green/amber/red; KaTeX display formula per check
@@ -115,5 +115,28 @@
 - `src/components/results/ResultsPanel.tsx` – main container: empty state, loading spinner, recalculating overlay, composes all result sub-components
 - `src/App.tsx` – two-column layout (lg:flex-row): input left (xl:w-2/5), results right (xl:w-3/5)
 - KaTeX LaTeX stripping: API wraps all formulae in `$…$`; must call `stripDelimiters()` before `katex.renderToString()` – handles both `$` and `$$`
+- **KaTeX strict:false** – backend LaTeX uses Unicode ² (N/mm²); `strict: false` suppresses warnings
 - Bar width formula: `min(eta / 1.5, 1) * 100%` – caps visual bar at 150% η so extreme failures remain readable
 - Unit conversions: Moments Nmm→kNm (÷1e6), Forces N→kN (÷1e3), Deflections stay mm – GZT for M/V, GZG for δ
+
+## Force Diagrams (Phase 4 completed, build ✅)
+- `src/components/results/ForceCharts.tsx` – Plotly charts: system sketch (SVG) + M, V, w diagrams
+- `src/plotly-dist-min.d.ts` – ambient module declaration re-exporting from `plotly.js` types
+  (plotly.js-dist-min has no bundled .d.ts; @types/plotly.js is installed via @types/react-plotly.js)
+- Plotly factory pattern: `const Plot = createPlotlyComponent(Plotly)` – must be at module level (not inside component)
+- All 3 diagrams: y-axis `autorange: 'reversed'` (structural engineering convention, positive moment downward)
+- Theme colors read via `getComputedStyle(document.documentElement).getPropertyValue('--foreground')` etc.
+  → Re-read inside `useMemo(..., [theme])` so charts update when user switches light/dark
+- GZG deflection: iterate GZG array, find entry with max |durchbiegung|; fall back to GZT
+- Unit conversions in chart data: moment Nmm÷1e6→kNm, shear N÷1e3→kN, deflection mm stays mm
+- System sketch: pure SVG (not Plotly) – beam line, filled triangles for supports, field labels, dimension lines
+- Support positions: field boundary x-coords excluding cantilever free ends
+- Field boundary x-coords used both for SVG tick marks AND Plotly shape vertical dashed lines
+- ResultsPanel: ForceCharts rendered in a `<section>` between EC5NachweiseCard and LastkombinationenCard
+
+## Critical API Response Format Pitfalls
+- **schnittgroessen.GZT**: Object `{max: {moment, querkraft, durchbiegung}, moment: [...], ...}`
+- **schnittgroessen.GZG**: **ARRAY** `[{max: {durchbiegung}, lastfall, kommentar, moment: [...], ...}]` – one entry per load
+  - Must iterate array to find max deflection; GZG max only has `durchbiegung`, not moment/querkraft
+- **lastfallkombinationen keys**: LaTeX strings like `\gamma_{g} \cdot g` – must render via KaTeX, not display raw
+- **ec_modus=false** with only permanent load: backend may error on `kmod_g` if no variable load exists
