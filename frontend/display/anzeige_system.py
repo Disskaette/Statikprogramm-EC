@@ -24,6 +24,10 @@ class SystemAnzeiger:
         self.parent = parent_frame
         self.root = eingabemaske.root
         self.eingabemaske = eingabemaske  # Für Zugriff auf max_formula_width
+        self._last_snapshot = None  # Speichere letzten Snapshot für Theme-Wechsel
+
+        # Theme-Callback registrieren: Neu rendern bei Theme-Wechsel
+        ThemeManager.register_theme_callback(self._on_theme_change)
 
         # Frame System
         self.frame_system = ctk.CTkFrame(self.parent)
@@ -40,6 +44,7 @@ class SystemAnzeiger:
     def update(self, snapshot, callback=None):
         """Aktualisiert den System-Plot direkt im Haupt-Thread."""
         logger.info("SystemAnzeiger: Update-Anfrage erhalten.")
+        self._last_snapshot = snapshot  # Für Theme-Wechsel speichern
         try:
             # Datenaufbereitung
             plot_data = self._prepare_plot_data(snapshot)
@@ -48,6 +53,13 @@ class SystemAnzeiger:
         except Exception as e:
             logger.error(f"Fehler bei der Plot-Erstellung: {e}")
             self.zeige_fehler(e)
+
+    def _on_theme_change(self):
+        """Callback für Theme-Wechsel: System neu zeichnen mit neuer Textfarbe."""
+        if self._last_snapshot:
+            logger.debug(
+                "SystemAnzeiger: Theme gewechselt, rendere System neu")
+            self.update(self._last_snapshot)
 
     def _prepare_plot_data(self, snapshot):
         """Bereitet alle notwendigen Koordinaten und Daten für den Plot vor."""
@@ -124,17 +136,11 @@ class SystemAnzeiger:
             matplotlib.use('Agg')  # Non-interactive backend
             import matplotlib.pyplot as plt  # Import hierher verlagert
 
-            # WICHTIG: Nutze die TATSÄCHLICHE ttk-Textfarbe!
+            # WICHTIG: Direkt ThemeManager-Farben (ttk.Style gibt im Dark Mode schwarz zurück!)
             from frontend.gui.theme_config import ThemeManager
-            from frontend.gui.latex_renderer import tkcolor_to_hex
 
-            style = ttk.Style(self.root)
-            fg_ttk = style.lookup('TLabel', 'foreground')
-            if fg_ttk:
-                text_color = tkcolor_to_hex(self.root, fg_ttk)
-            else:
-                # Fallback: System-Farbe
-                text_color = '#000000' if ThemeManager._current_mode == 'light' else '#E0E0E0'
+            # Automatisch richtig je nach Mode
+            text_color = ThemeManager.get_color('text_main')
 
             # Entpacke die vorbereiteten Daten
             segments = plot_data["segments"]

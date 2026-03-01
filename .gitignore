@@ -1,0 +1,35 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.egg-info/
+dist/
+build/
+.venv/
+venv/
+*.egg
+
+# Local configuration (contains machine-specific paths, recent projects, window geometry)
+config/settings.json
+
+# IDE / Editor
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+
+# Claude Code internal data
+.claude/agents/
+web/frontend/.claude/
+
+# Notes / planning (not code)
+ideas.md
+Bilder/
+
+# Node (managed by web/frontend/.gitignore, redundant here but explicit)
+web/frontend/node_modules/
+web/frontend/dist/

@@ -1,0 +1,12 @@
+{
+  "position_nummer": "1.3",
+  "position_name": "Firstpfette",
+  "created": "2026-02-26T20:38:50.151980",
+  "last_modified": "2026-02-26T20:38:50.154054",
+  "active_module": "durchlauftraeger",
+  "modules": {
+    "durchlauftraeger": null,
+    "brandschutz": null,
+    "auflager": null
+  }
+}

@@ -1,13 +1,14 @@
 {
   "name": "Für Felix",
   "created": "2025-10-24T18:24:17.502531",
-  "last_modified": "2025-10-24T21:32:41.173456",
+  "last_modified": "2026-02-26T20:38:50.154606",
   "description": "Test2",
   "positions": [
     "Position_1_1_Sparren.json",
     "Position_1_2_Unterzug.json",
     "Position_Twest 67_Geiler_Hase.json",
-    "Position_1_asd.json"
+    "Position_1_asd.json",
+    "Position_1_3_Firstpfette.json"
   ],
   "uuid": "2a838fa1-498b-4ecf-b22f-4b0af0fb838b"
 }

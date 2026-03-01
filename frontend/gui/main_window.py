@@ -54,6 +54,10 @@ class MainWindow:
         ctk.set_appearance_mode("dark")  # "system", "light", "dark"
         ctk.set_default_color_theme("blue")  # "blue", "green", "dark-blue"
 
+        # WICHTIG: ThemeManager mit ctk synchronisieren beim Start!
+        ThemeManager.set_mode("dark")
+        ThemeManager.configure_matplotlib()
+
         # Minimale Fenstergröße setzen (klein, da dynamisch)
         self.root.minsize(800, 500)
 
@@ -64,8 +68,7 @@ class MainWindow:
             self.root.geometry(geometry)
         else:
             # Kompakte Startgröße, passt sich dann an Inhalt an
-            # ThemeManager für MAX_DISPLAY_WIDTH nutzen
-            from frontend.gui.theme_config import ThemeManager
+            # ThemeManager für MAX_DISPLAY_WIDTH nutzen (bereits global importiert!)
             start_width = ThemeManager.MAX_DISPLAY_WIDTH + 450  # Kompakt: Eingabe + Anzeige
             start_height = 700  # Kompakte Höhe
 

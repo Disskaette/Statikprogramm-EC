@@ -64,7 +64,9 @@ class ProjectExplorer(ttk.Frame):
             "x": 0,
             "y": 0,
             "dragging": False,
-            "threshold": 5  # Pixel bevor Drag startet
+            "threshold": 5,  # Pixel bevor Drag startet
+            "hover_item": None,  # Aktuell gehovertes Item
+            "original_tags": None  # Ursprüngliche Tags des Hover-Items
         }
 
         # Spalten konfigurieren
@@ -81,6 +83,11 @@ class ProjectExplorer(ttk.Frame):
         # Windows/Linux Right-Click
         self.tree.bind("<Button-3>", self._on_right_click)
 
+        # Drag & Drop Events
+        self.tree.bind("<ButtonPress-1>", self._on_drag_start)
+        self.tree.bind("<B1-Motion>", self._on_drag_motion)
+        self.tree.bind("<ButtonRelease-1>", self._on_drag_release)
+
         # Kontextmenü erstellen
         self._create_context_menu()
 
@@ -94,6 +101,9 @@ class ProjectExplorer(ttk.Frame):
             command=self._on_add_position,
         )
         self.add_position_button.pack(fill="x")
+
+        # Theme initial anwenden
+        self._apply_theme_to_treeview()
 
     def load_project(self, project_path: Path, project_manager):
         """
@@ -123,6 +133,63 @@ class ProjectExplorer(ttk.Frame):
         self.add_position_button.config(state="normal")
 
         logger.info(f"Projekt geladen in Explorer: {project_name}")
+
+    def _apply_theme_to_treeview(self):
+        """Wendet das aktuelle Theme auf die TreeView an (Dark/Light Mode)."""
+        from frontend.gui.theme_config import ThemeManager
+
+        style = ttk.Style(self)
+        current_mode = ThemeManager.get_current_mode()
+
+        # WICHTIG: Für TreeView NICHT das aqua-Theme nutzen, sondern 'clam' (besser stylingbar)
+        try:
+            style.theme_use('clam')
+        except:
+            pass
+
+        # Farben aus ThemeManager holen (konsistent mit restlicher Anwendung)
+        # Verwende bg_secondary für TreeView (weicher als bg_main)
+        bg = ThemeManager.get_color('bg_secondary')
+        fg = ThemeManager.get_color('text_main')
+        field_bg = ThemeManager.get_color('bg_secondary')
+        selected_bg = ThemeManager.get_color('bg_selected')
+        selected_fg = ThemeManager.get_color('text_main')
+        border = ThemeManager.get_color('border')
+        bg_header = ThemeManager.get_color(
+            'bg_main')  # Header etwas dunkler/heller
+
+        # TreeView Hauptstyle
+        style.configure('Treeview',
+                        background=bg,
+                        foreground=fg,
+                        fieldbackground=field_bg,
+                        borderwidth=0,
+                        rowheight=25)
+
+        # TreeView Selection/Hover States
+        style.map('Treeview',
+                  background=[('selected', selected_bg),
+                              ('active', bg)],
+                  foreground=[('selected', selected_fg), ('active', fg)])
+
+        # TreeView Header (Spaltenüberschriften)
+        style.configure('Treeview.Heading',
+                        background=bg_header,
+                        foreground=fg,
+                        borderwidth=1,
+                        relief='flat')
+
+        style.map('Treeview.Heading',
+                  background=[('active', border)],
+                  foreground=[('active', fg)])
+
+        # Tag für Drag & Drop Ziel (grüner Highlight)
+        self.tree.tag_configure('drop_target',
+                                background=ThemeManager.get_color(
+                                    'accent_green'),
+                                foreground=fg)
+
+        logger.debug(f"TreeView Theme aktualisiert: {current_mode}")
 
     def _load_positions_recursive(self, parent_id: str, base_path: Path, current_path: Path):
         """
@@ -522,3 +589,210 @@ class ProjectExplorer(ttk.Frame):
             except Exception as e:
                 messagebox.showerror(
                     "Fehler", f"Ordner löschen fehlgeschlagen:\n{e}")
+
+    # ========== Drag & Drop Methoden ==========
+
+    def _on_drag_start(self, event):
+        """Start des Drag-Vorgangs"""
+        # Speichere Start-Position
+        self._drag_data["x"] = event.x
+        self._drag_data["y"] = event.y
+        self._drag_data["dragging"] = False
+        self._drag_data["item"] = self.tree.identify_row(event.y)
+
+    def _on_drag_motion(self, event):
+        """Während des Dragging - zeige visuelles Feedback"""
+        if not self._drag_data.get("item"):
+            return
+
+        # Prüfe ob Threshold überschritten
+        dx = abs(event.x - self._drag_data["x"])
+        dy = abs(event.y - self._drag_data["y"])
+
+        if dx > self._drag_data["threshold"] or dy > self._drag_data["threshold"]:
+            self._drag_data["dragging"] = True
+
+            # Visuelles Hover-Feedback
+            target_item = self.tree.identify_row(event.y)
+
+            # Entferne vorheriges Hover (stelle ursprüngliche Tags wieder her)
+            if self._drag_data["hover_item"] and self._drag_data["hover_item"] != target_item:
+                try:
+                    if self._drag_data["original_tags"]:
+                        self.tree.item(
+                            self._drag_data["hover_item"], tags=self._drag_data["original_tags"])
+                except:
+                    pass
+
+            # Neues Hover-Item markieren
+            if target_item:
+                target_tags = self.tree.item(target_item, "tags")
+                source_tags = self.tree.item(self._drag_data["item"], "tags")
+
+                # Nur Ordner oder Projekt als Drop-Ziel erlauben
+                if ("folder" in target_tags or "project" in target_tags) and "position" in source_tags:
+                    # Speichere ursprüngliche Tags VOR Überschreiben
+                    self._drag_data["original_tags"] = target_tags
+                    # Füge "drop_target" zu den bestehenden Tags hinzu
+                    new_tags = list(target_tags) + ["drop_target"]
+                    self.tree.item(target_item, tags=tuple(new_tags))
+                    self._drag_data["hover_item"] = target_item
+                    # Cursor ändern
+                    self.tree.config(cursor="hand2")
+                else:
+                    # Ungültiges Drop-Ziel
+                    self.tree.config(cursor="X_cursor")
+                    self._drag_data["hover_item"] = None
+                    self._drag_data["original_tags"] = None
+            else:
+                self.tree.config(cursor="arrow")
+                self._drag_data["hover_item"] = None
+                self._drag_data["original_tags"] = None
+
+    def _on_drag_release(self, event):
+        """Ende des Drag-Vorgangs - führe Move aus"""
+        # Prüfe ZUERST ob es ein echtes Drag war
+        if not self._drag_data.get("dragging"):
+            # Kein echtes Drag → normaler Click → trotzdem aufräumen!
+            if self._drag_data.get("hover_item") and self._drag_data.get("original_tags"):
+                try:
+                    self.tree.item(
+                        self._drag_data["hover_item"], tags=self._drag_data["original_tags"])
+                except:
+                    pass
+            self.tree.config(cursor="arrow")
+            self._drag_data["hover_item"] = None
+            self._drag_data["original_tags"] = None
+            return
+
+        # Entferne Hover-Highlighting (stelle ursprüngliche Tags wieder her)
+        if self._drag_data.get("hover_item") and self._drag_data.get("original_tags"):
+            try:
+                self.tree.item(
+                    self._drag_data["hover_item"], tags=self._drag_data["original_tags"])
+            except:
+                pass
+
+        # Cursor zurücksetzen
+        self.tree.config(cursor="arrow")
+        self._drag_data["hover_item"] = None
+        self._drag_data["original_tags"] = None
+
+        source_item = self._drag_data.get("item")
+        target_item = self.tree.identify_row(event.y)
+
+        if not source_item or not target_item or source_item == target_item:
+            self._drag_data["dragging"] = False
+            return
+
+        # Hole Item-Daten
+        source_tags = self.tree.item(source_item, "tags")
+        target_tags = self.tree.item(target_item, "tags")
+
+        # Nur Positionen können verschoben werden
+        if "position" not in source_tags:
+            self._drag_data["dragging"] = False
+            return
+
+        # Ziel kann Ordner ODER Projekt sein
+        if "folder" in target_tags:
+            # In Ordner verschieben
+            self._move_position_to_folder(source_tags[1], target_tags[1])
+        elif "project" in target_tags:
+            # In Projekt-Root verschieben
+            self._move_position_to_project_root(source_tags[1], target_tags[1])
+
+        self._drag_data["dragging"] = False
+
+    def _move_position_to_folder(self, position_path_str, folder_path_str):
+        """Verschiebt eine Position in einen Ordner"""
+        try:
+            from tkinter import messagebox
+            import shutil
+
+            position_path = Path(position_path_str)
+            folder_path = Path(folder_path_str)
+
+            # Prüfe ob Position existiert
+            if not position_path.exists():
+                messagebox.showerror(
+                    "Fehler", "Position existiert nicht mehr!")
+                return
+
+            # Prüfe ob Zielordner existiert
+            if not folder_path.exists():
+                messagebox.showerror("Fehler", "Zielordner existiert nicht!")
+                return
+
+            # Ziel-Dateiname
+            new_path = folder_path / position_path.name
+
+            # Prüfe ob bereits existiert
+            if new_path.exists():
+                messagebox.showerror(
+                    "Fehler", f"Eine Position mit dem Namen '{position_path.name}' existiert bereits im Zielordner!")
+                return
+
+            # Verschiebe Datei
+            shutil.move(str(position_path), str(new_path))
+            logger.info(f"Position verschoben: {position_path} → {new_path}")
+
+            # Refresh TreeView
+            self.refresh(self.current_project_manager)
+
+            messagebox.showinfo(
+                "Erfolg", f"Position '{position_path.name}' wurde in '{folder_path.name}' verschoben.")
+
+        except Exception as e:
+            logger.error(f"Fehler beim Verschieben: {e}")
+            messagebox.showerror("Fehler", f"Verschieben fehlgeschlagen:\n{e}")
+
+    def _move_position_to_project_root(self, position_path_str, project_path_str):
+        """Verschiebt eine Position in den Projekt-Root (raus aus Ordnern)"""
+        try:
+            from tkinter import messagebox
+            import shutil
+
+            position_path = Path(position_path_str)
+            project_path = Path(project_path_str)
+
+            # Prüfe ob Position existiert
+            if not position_path.exists():
+                messagebox.showerror(
+                    "Fehler", "Position existiert nicht mehr!")
+                return
+
+            # Prüfe ob Projekt existiert
+            if not project_path.exists():
+                messagebox.showerror("Fehler", "Projekt existiert nicht!")
+                return
+
+            # Ziel-Dateiname (im Projekt-Root)
+            new_path = project_path / position_path.name
+
+            # Prüfe ob bereits im Root ist
+            if position_path.parent == project_path:
+                messagebox.showinfo(
+                    "Info", "Position ist bereits im Projekt-Root.")
+                return
+
+            # Prüfe ob bereits existiert
+            if new_path.exists():
+                messagebox.showerror(
+                    "Fehler", f"Eine Position mit dem Namen '{position_path.name}' existiert bereits im Projekt-Root!")
+                return
+
+            # Verschiebe Datei
+            shutil.move(str(position_path), str(new_path))
+            logger.info(
+                f"Position in Projekt-Root verschoben: {position_path} → {new_path}")
+
+            # Refresh TreeView
+            self.refresh(self.current_project_manager)
+
+            messagebox.showinfo(
+                "Erfolg", f"Position '{position_path.name}' wurde in den Projekt-Root verschoben.")
+
+        except Exception as e:
+            logger.error(f"Fehler beim Verschieben: {e}")
+            messagebox.showerror("Fehler", f"Verschieben fehlgeschlagen:\n{e}")

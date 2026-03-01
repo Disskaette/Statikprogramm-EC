@@ -158,19 +158,13 @@ class NachweisEC5Anzeiger:
     def render_latex_to_image(self, latex_str):
         """Rendert LaTeX MIT TRANSPARENZ (wie Systemanzeige)."""
         try:
-            from frontend.gui.latex_renderer import render_latex_transparent, tkcolor_to_hex
+            from frontend.gui.latex_renderer import render_latex_transparent
             from frontend.gui.theme_config import ThemeManager
 
-            # WICHTIG: Nutze die TATSÄCHLICHE ttk-Textfarbe, nicht ThemeManager!
-            style = ttk.Style(self.root)
-            fg_ttk = style.lookup('TLabel', 'foreground')
-            if fg_ttk:
-                fg_hex = tkcolor_to_hex(self.root, fg_ttk)
-            else:
-                # Fallback: System-Farbe (schwarz in Light, weiß in Dark)
-                fg_hex = '#000000' if ThemeManager._current_mode == 'light' else '#E0E0E0'
-
+            # WICHTIG: Direkt ThemeManager-Farben (ttk.Style gibt im Dark Mode schwarz zurück!)
             mode = ThemeManager._current_mode
+            # Automatisch richtig je nach Mode
+            fg_hex = ThemeManager.get_color('text_main')
 
             # Aus Cache holen oder neu rendern
             cache_key_bg = "transparent"

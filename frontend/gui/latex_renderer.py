@@ -230,7 +230,7 @@ def render_latex_on_bg(
 
         # WICHTIG: transparent=False, facecolor=bg_hex
         plt.savefig(buf, format="png", bbox_inches="tight",
-                    pad_inches=0.05, transparent=False,
+                    pad_inches=0.00, transparent=False,
                     facecolor=bg_hex, edgecolor=bg_hex)
         plt.close(fig)
 

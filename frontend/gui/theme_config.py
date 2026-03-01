@@ -107,8 +107,9 @@ class ThemeManager:
         'border': '#D0D0D0',           # Helles Grau (Rahmen)
         'border_light': '#E5E5E5',     # Sehr helles Grau (dezente Trenner)
 
-        # Text
-        'text_main': '#2C3E50',        # Dunkelgrau (Haupttext)
+        # Text (CustomTkinter-kompatibel für einheitliches Erscheinungsbild)
+        # Fast schwarz (entspricht CTkLabel Light Mode / gray10)
+        'text_main': '#1A1A1A',
         'text_secondary': '#7F8C8D',   # Mittelgrau (Sekundärtext)
         'text_disabled': '#BDC3C7',    # Hellgrau (Disabled)
 
@@ -132,8 +133,8 @@ class ThemeManager:
         'border': '#555555',           # Mittelgrau (Rahmen)
         'border_light': '#3C3C3C',     # Dunkler (dezente Trenner)
 
-        # Text
-        'text_main': '#E0E0E0',        # Hellgrau (Haupttext)
+        # Text (CustomTkinter-kompatibel für einheitliches Erscheinungsbild)
+        'text_main': '#DCE4EE',        # Hell (entspricht CTkLabel Dark Mode)
         'text_secondary': '#B0B0B0',   # Mittelgrau (Sekundärtext)
         'text_disabled': '#707070',    # Dunkelgrau (Disabled)
 
@@ -284,28 +285,22 @@ class ThemeManager:
 
         style = ttk.Style(root)
 
-        # Nutze aqua-Theme (folgt automatisch macOS System-Theme)
-        # aqua passt sich automatisch an Dark Mode an
-        if platform.system() == 'Darwin':  # macOS
-            try:
-                style.theme_use('aqua')
-                logger.info(
-                    "aqua-Theme geladen (folgt System-Theme automatisch)")
-            except:
-                style.theme_use('default')
-        else:
-            try:
-                style.theme_use('clam')
-            except:
-                logger.warning("Theme nicht verfügbar, nutze Standard")
-                style.theme_use('default')
+        # Verwende 'clam' Theme für ALLE Plattformen (besser kontrollierbar als aqua)
+        # aqua würde dem macOS System-Theme folgen, was zu Desynchronisation führt
+        try:
+            style.theme_use('clam')
+            logger.info(
+                "clam-Theme geladen (ermöglicht vollständige Farb-Kontrolle)")
+        except:
+            logger.warning("clam-Theme nicht verfügbar, nutze default")
+            style.theme_use('default')
 
-        # KEINE Root-Hintergrund-Konfiguration → aqua folgt System automatisch
-        # root.configure(bg=cls.COLORS['bg_main'])  # NICHT SETZEN!
+        # Setze Hintergrundfarben für Frames/Widgets (nur bei clam möglich!)
+        root.configure(bg=cls.COLORS['bg_main'])
 
         # ========== Frame Styles ==========
-        # KEINE Background-Farben setzen → aqua passt sich automatisch an
-        # style.configure('TFrame', background=cls.COLORS['bg_main'])  # NICHT SETZEN!
+        style.configure('TFrame', background=cls.COLORS['bg_main'])
+        style.configure('TLabelframe', background=cls.COLORS['bg_main'])
 
         style.configure('Card.TFrame',
                         relief='flat',
