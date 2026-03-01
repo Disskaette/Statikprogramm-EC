@@ -47,7 +47,10 @@ def _install_tkinter_stubs() -> None:
     try:
         import tkinter  # noqa: F401 – check whether the real module is present
         return  # Real tkinter available – nothing to do
-    except ModuleNotFoundError:
+    except ImportError:
+        # Catches both ModuleNotFoundError (tkinter not installed) and the
+        # ImportError raised when the native _tkinter C-extension can't load
+        # its shared library (e.g. libtk8.6.so missing in python:slim images).
         pass
 
     # Stub for _tkinter (C extension that tkinter wraps)
