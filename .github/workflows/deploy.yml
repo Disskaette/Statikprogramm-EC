@@ -82,14 +82,18 @@ jobs:
             echo "--- Container Status ---"
             docker ps --filter name=stark-statik
 
-            # Poll until uvicorn is ready (Python+numpy startup can take 10-15s)
-            echo "--- Warte auf uvicorn (max 30s) ---"
-            for i in 1 2 3 4 5 6; do
-              sleep 5
-              if docker exec stark-statik \
-                  python3 -c "import urllib.request; r=urllib.request.urlopen('http://localhost:8000/api/health', timeout=5); print('Health:', r.read().decode())" \
-                  2>/dev/null; then
-                break
-              fi
-              echo "Versuch $i/6 – uvicorn noch nicht bereit ..."
-            done || echo "Health-Check fehlgeschlagen nach 30s – bitte Logs prüfen: docker logs stark-statik"
+            # Use container IP to check from host (avoids docker exec Python overhead).
+            # curl --retry-all-errors retries on connection refused too (curl ≥ 7.71).
+            CONTAINER_IP=$(docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' stark-statik)
+            echo "--- Health Check: http://$CONTAINER_IP:8000/api/health (max 60s) ---"
+            if curl -sf "http://$CONTAINER_IP:8000/api/health" \
+                --max-time 5 \
+                --retry 12 \
+                --retry-delay 5 \
+                --retry-all-errors \
+                -o /tmp/health_response.json; then
+              echo "Health OK: $(cat /tmp/health_response.json)"
+            else
+              echo "Health-Check fehlgeschlagen – Container-Logs:"
+              docker logs --tail 40 stark-statik
+            fi
