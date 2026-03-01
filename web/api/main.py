@@ -17,7 +17,6 @@ from typing import AsyncIterator
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
 # Import deps first so that sys.path is patched before any backend import
@@ -135,23 +134,22 @@ async def health_check() -> dict[str, str]:
 
 # ---------------------------------------------------------------------------
 # Static files: serve the built React frontend (if present)
+#
+# Pattern: mount the entire dist/ directory with html=True at the root "/".
+# Starlette's StaticFiles(html=True) automatically serves index.html for any
+# path that doesn't match a real file – this is the correct SPA fallback.
+#
+# IMPORTANT: This mount must be registered AFTER all API routes. Starlette
+# evaluates mounts before @app.get() catch-all routes (/{full_path:path}),
+# which caused the old /assets mount to be bypassed by the catch-all, making
+# FastAPI serve index.html for every request including JS/CSS assets.
 # ---------------------------------------------------------------------------
 
 _FRONTEND_DIST = Path(__file__).parent.parent / "frontend" / "dist"
 
 if _FRONTEND_DIST.exists():
-    # Serve JS/CSS/image assets from the build output directory
     app.mount(
-        "/assets",
-        StaticFiles(directory=str(_FRONTEND_DIST / "assets")),
-        name="assets",
+        "/",
+        StaticFiles(directory=str(_FRONTEND_DIST), html=True),
+        name="spa",
     )
-
-    @app.get("/{full_path:path}", include_in_schema=False)
-    async def serve_spa(full_path: str) -> FileResponse:
-        """
-        Catch-all route: serve index.html for all non-API paths so that
-        React Router (client-side routing) works correctly on page refresh.
-        """
-        index_file = _FRONTEND_DIST / "index.html"
-        return FileResponse(str(index_file))
