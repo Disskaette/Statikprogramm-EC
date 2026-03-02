@@ -14,10 +14,12 @@ import { useBeamStore } from "@/stores/useBeamStore";
 import { useProjectStore } from "@/stores/useProjectStore";
 import { useLocalProjectStore } from "@/stores/useLocalProjectStore";
 import {
+  pickDirectory,
   readPositionFile,
   writePositionFile,
   deletePositionFile,
 } from "@/fs/useLocalFileSystem";
+import type { Project } from "@/types/project";
 import { api } from "@/lib/api";
 import type { HandleKey } from "@/types/localProject";
 import type { CalculationRequest } from "@/types/beam";
@@ -44,6 +46,7 @@ interface UseLocalProjectActionsResult {
     key: HandleKey,
     options: { projectName: string; visibility: "private" | "shared" }
   ) => Promise<void>;
+  downloadToLocal: (projectId: string, projectName: string) => Promise<void>;
   clearError: () => void;
 }
 
@@ -65,6 +68,7 @@ export function useLocalProjectActions(): UseLocalProjectActionsResult {
 
   const projects = useLocalProjectStore((s) => s.projects);
   const refreshProject = useLocalProjectStore((s) => s.refreshProject);
+  const addProject = useLocalProjectStore((s) => s.addProject);
 
   const clearPosition = useProjectStore((s) => s.clearPosition);
 
@@ -344,6 +348,76 @@ export function useLocalProjectActions(): UseLocalProjectActionsResult {
   );
 
   // -------------------------------------------------------------------------
+  // downloadToLocal
+  // -------------------------------------------------------------------------
+
+  const downloadToLocal = useCallback(
+    async (projectId: string, projectName: string) => {
+      setIsLoading(true);
+      setError(null);
+      try {
+        // 1. Pick a target folder
+        let targetHandle: FileSystemDirectoryHandle;
+        try {
+          targetHandle = await pickDirectory();
+        } catch (err) {
+          if (err instanceof Error && err.name === "AbortError") return; // user cancelled
+          throw err;
+        }
+
+        // 2. Read all positions from server
+        const positionsResponse = await api.get<{
+          positions: { relative_path: string }[];
+          folders: string[];
+        }>(`/api/projects/${projectId}/positions`);
+
+        // 3. Read project metadata from server projects list
+        const serverProjects = await api.get<Project[]>("/api/projects");
+        const project = serverProjects.find((p) => p.uuid === projectId);
+
+        // 4. Write project.json to target folder
+        await writePositionFile(targetHandle, "project.json", {
+          uuid: projectId,
+          name: project?.name ?? projectName,
+          created: project?.created ?? new Date().toISOString(),
+          last_modified: new Date().toISOString(),
+          description: project?.description ?? "",
+          visibility: project?.visibility ?? "private",
+        });
+
+        // 5. Download and write each position file
+        for (const pos of positionsResponse.positions) {
+          const fullPos = await api.get<{
+            position_nummer: string;
+            position_name: string;
+            created: string;
+            active_module: string;
+            modules: Record<string, unknown>;
+          }>(`/api/projects/${projectId}/positions/${pos.relative_path}`);
+
+          await writePositionFile(targetHandle, pos.relative_path, {
+            position_nummer: fullPos.position_nummer,
+            position_name: fullPos.position_name,
+            created: fullPos.created,
+            active_module: fullPos.active_module,
+            modules: fullPos.modules,
+          });
+        }
+
+        // 6. Register the downloaded folder as a local project
+        await addProject(targetHandle);
+      } catch (err) {
+        setError(
+          err instanceof Error ? err.message : "Fehler beim lokalen Speichern"
+        );
+      } finally {
+        setIsLoading(false);
+      }
+    },
+    [queryClient, addProject]
+  );
+
+  // -------------------------------------------------------------------------
 
   const clearError = useCallback(() => setError(null), []);
 
@@ -355,6 +429,7 @@ export function useLocalProjectActions(): UseLocalProjectActionsResult {
     createLocalPosition,
     deleteLocalPosition,
     uploadToServer,
+    downloadToLocal,
     clearError,
   };
 }

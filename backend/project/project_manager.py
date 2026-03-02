@@ -72,6 +72,7 @@ class ProjectManager:
             "created": datetime.now().isoformat(),
             "last_modified": datetime.now().isoformat(),
             "description": description,
+            "visibility": "private",  # Default: private; can be set to "shared"
             "positions": []
         }
 

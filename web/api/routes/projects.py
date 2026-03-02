@@ -122,6 +122,11 @@ class CreateFolderRequest(BaseModel):
     )
 
 
+class VisibilityRequest(BaseModel):
+    """Request body for changing a project's visibility."""
+    visibility: str = Field(description="'private' or 'shared'")
+
+
 # ---------------------------------------------------------------------------
 # Helper: resolve project UUID → project path
 # ---------------------------------------------------------------------------
@@ -982,3 +987,52 @@ async def delete_folder(
         return {"deleted": folder_path, "removed_positions": removed_positions}
 
     return await loop.run_in_executor(None, _delete_folder)
+
+
+# ---------------------------------------------------------------------------
+# Endpoint: PATCH set project visibility
+# ---------------------------------------------------------------------------
+
+@router.patch(
+    "/{project_id}/visibility",
+    response_model=dict[str, Any],
+    summary="Set the visibility of a project (private or shared)",
+)
+async def set_project_visibility(
+    project_id: str,
+    body: VisibilityRequest,
+    pm: ProjectManagerDep,
+) -> dict[str, Any]:
+    """
+    PATCH /api/projects/{project_id}/visibility
+
+    Updates the ``visibility`` field in project.json.
+    Accepted values: ``"private"`` (default) or ``"shared"``.
+
+    Returns::
+
+        {"visibility": "<new_value>"}
+
+    Raises:
+        404 if the project does not exist.
+    """
+    import json as _json
+    from datetime import datetime as _datetime
+
+    loop = asyncio.get_running_loop()
+
+    def _update():
+        project_path = _find_project_path(pm, project_id)
+        project_file = project_path / "project.json"
+        with open(project_file, "r", encoding="utf-8") as f:
+            data = _json.load(f)
+        data["visibility"] = body.visibility
+        data["last_modified"] = _datetime.now().isoformat()
+        with open(project_file, "w", encoding="utf-8") as f:
+            _json.dump(data, f, indent=2, ensure_ascii=False)
+        logger.info(
+            "Set visibility of project '%s' to '%s'", project_id, body.visibility
+        )
+        return {"visibility": body.visibility}
+
+    return await loop.run_in_executor(None, _update)

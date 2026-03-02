@@ -866,6 +866,9 @@ export function ProjectExplorer() {
     clearError,
   } = useProjectActions();
 
+  // ---- Local project actions (for server → local download) -----------------
+  const { downloadToLocal } = useLocalProjectActions();
+
   // ---- Tab state ------------------------------------------------------------
   const [activeTab, setActiveTab] = useState<"server" | "local">("server");
 
@@ -1432,6 +1435,36 @@ export function ProjectExplorer() {
                 +
               </button>
             </div>
+
+            {/* Visibility badge + download-to-local button for selected project */}
+            {currentProjectId && (() => {
+              const selectedProject = projects?.find((p) => p.uuid === currentProjectId);
+              if (!selectedProject) return null;
+              return (
+                <div className="flex items-center gap-1.5 mt-1 px-1">
+                  <span
+                    className="text-xs text-[var(--muted-foreground)]"
+                    title={selectedProject.visibility === "shared" ? "Öffentlich" : "Privat"}
+                  >
+                    {selectedProject.visibility === "shared" ? "👥" : "🔒"}
+                  </span>
+                  <span className="text-[10px] text-[var(--muted-foreground)] flex-1 truncate">
+                    {selectedProject.visibility === "shared" ? "Geteilt" : "Privat"}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      downloadToLocal(selectedProject.uuid, selectedProject.name)
+                    }
+                    className="shrink-0 rounded border border-[var(--border)] px-1.5 py-0.5 text-xs text-[var(--muted-foreground)] hover:text-[var(--foreground)] hover:bg-[var(--accent)] transition-colors"
+                    title="Lokal speichern"
+                    aria-label={`Projekt ${selectedProject.name} lokal speichern`}
+                  >
+                    &#x2601;&#x2193;
+                  </button>
+                </div>
+              );
+            })()}
 
             {showNewProject && (
               <InlineInput
