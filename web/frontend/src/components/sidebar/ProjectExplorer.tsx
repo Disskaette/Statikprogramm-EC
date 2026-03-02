@@ -514,7 +514,8 @@ function LocalTab() {
   const addProject = useLocalProjectStore((s) => s.addProject);
   const removeProject = useLocalProjectStore((s) => s.removeProject);
   const requestPermission = useLocalProjectStore((s) => s.requestPermission);
-  const { loadLocalPosition } = useLocalProjectActions();
+  const { loadLocalPosition, createLocalPosition, deleteLocalPosition } =
+    useLocalProjectActions();
 
   const [openFolderError, setOpenFolderError] = useState<string | null>(null);
 
@@ -564,6 +565,8 @@ function LocalTab() {
           key={project.key}
           project={project}
           onLoadPosition={loadLocalPosition}
+          onCreatePosition={createLocalPosition}
+          onDeletePosition={deleteLocalPosition}
           onRequestPermission={() => requestPermission(project.key)}
           onRemove={() => removeProject(project.key)}
         />
@@ -575,6 +578,15 @@ function LocalTab() {
 interface LocalProjectItemProps {
   project: LocalProjectEntry;
   onLoadPosition: (key: string, relativePath: string) => Promise<void>;
+  onCreatePosition: (
+    key: string,
+    options: {
+      position_nummer: string;
+      position_name: string;
+      subfolder?: string;
+    }
+  ) => Promise<void>;
+  onDeletePosition: (key: string, relativePath: string) => Promise<void>;
   onRequestPermission: () => Promise<void>;
   onRemove: () => void;
 }
@@ -582,10 +594,16 @@ interface LocalProjectItemProps {
 function LocalProjectItem({
   project,
   onLoadPosition,
+  onCreatePosition,
+  onDeletePosition,
   onRequestPermission,
   onRemove,
 }: LocalProjectItemProps) {
   const [isExpanded, setIsExpanded] = useState(true);
+  const [showCreateDialog, setShowCreateDialog] = useState(false);
+  const [newNummer, setNewNummer] = useState("");
+  const [newName, setNewName] = useState("");
+
   const currentPositionPath = useProjectStore((s) => s.currentPositionPath);
   const currentLocalProjectKey = useProjectStore((s) => s.currentLocalProjectKey);
 
@@ -601,6 +619,18 @@ function LocalProjectItem({
           <span className="shrink-0">📂</span>
           <span className="truncate">{project.meta.name || project.handle.name}</span>
         </button>
+        {/* "New position" button – hover-revealed */}
+        <button
+          onClick={(e) => {
+            e.stopPropagation();
+            setShowCreateDialog(true);
+          }}
+          className="shrink-0 opacity-0 group-hover:opacity-100 text-[var(--muted-foreground)] hover:text-[var(--foreground)] transition-opacity px-1"
+          title="Neue Position"
+          aria-label="Neue lokale Position erstellen"
+        >
+          ＋
+        </button>
         <button
           onClick={onRemove}
           className="shrink-0 opacity-0 group-hover:opacity-100 text-[var(--muted-foreground)] hover:text-red-500 transition-opacity px-1"
@@ -610,6 +640,56 @@ function LocalProjectItem({
           ✕
         </button>
       </div>
+
+      {/* Inline create-position dialog */}
+      {showCreateDialog && (
+        <div className="mx-2 my-1 p-2 rounded border border-[var(--border)] bg-[var(--card)] space-y-2">
+          <p className="text-xs font-medium text-[var(--foreground)]">Neue Position</p>
+          <input
+            type="text"
+            placeholder="Nummer (z.B. 1.01)"
+            value={newNummer}
+            onChange={(e) => setNewNummer(e.target.value)}
+            className="w-full text-xs px-2 py-1 rounded border border-[var(--border)] bg-[var(--background)] text-[var(--foreground)] outline-none focus:ring-1 focus:ring-[var(--primary)]"
+            autoFocus
+          />
+          <input
+            type="text"
+            placeholder="Name (z.B. Wohnzimmerdecke)"
+            value={newName}
+            onChange={(e) => setNewName(e.target.value)}
+            className="w-full text-xs px-2 py-1 rounded border border-[var(--border)] bg-[var(--background)] text-[var(--foreground)] outline-none focus:ring-1 focus:ring-[var(--primary)]"
+          />
+          <div className="flex gap-1">
+            <button
+              onClick={async () => {
+                if (!newNummer.trim() || !newName.trim()) return;
+                await onCreatePosition(project.key, {
+                  position_nummer: newNummer.trim(),
+                  position_name: newName.trim(),
+                });
+                setShowCreateDialog(false);
+                setNewNummer("");
+                setNewName("");
+              }}
+              disabled={!newNummer.trim() || !newName.trim()}
+              className="flex-1 text-xs py-1 rounded bg-[var(--primary)] text-[var(--primary-foreground)] hover:opacity-90 disabled:opacity-40 transition-opacity"
+            >
+              Erstellen
+            </button>
+            <button
+              onClick={() => {
+                setShowCreateDialog(false);
+                setNewNummer("");
+                setNewName("");
+              }}
+              className="flex-1 text-xs py-1 rounded border border-[var(--border)] text-[var(--muted-foreground)] hover:text-[var(--foreground)] transition-colors"
+            >
+              Abbrechen
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Permission warning */}
       {!project.hasPermission && (
@@ -639,18 +719,27 @@ function LocalProjectItem({
               currentLocalProjectKey === project.key &&
               currentPositionPath === pos.relative_path;
             return (
-              <button
-                key={pos.relative_path}
-                className={`w-full text-left px-2 py-0.5 rounded transition-colors truncate ${
-                  isActive
-                    ? "bg-[var(--primary)] text-[var(--primary-foreground)]"
-                    : "hover:bg-[var(--accent)] text-[var(--foreground)]"
-                }`}
-                onClick={() => onLoadPosition(project.key, pos.relative_path)}
-                title={`${pos.position_nummer} – ${pos.position_name}`}
-              >
-                📄 {pos.position_nummer} – {pos.position_name}
-              </button>
+              <div key={pos.relative_path} className="flex items-center group/pos">
+                <button
+                  className={`flex-1 text-left px-2 py-0.5 rounded transition-colors truncate ${
+                    isActive
+                      ? "bg-[var(--primary)] text-[var(--primary-foreground)]"
+                      : "hover:bg-[var(--accent)] text-[var(--foreground)]"
+                  }`}
+                  onClick={() => onLoadPosition(project.key, pos.relative_path)}
+                  title={`${pos.position_nummer} – ${pos.position_name}`}
+                >
+                  📄 {pos.position_nummer} – {pos.position_name}
+                </button>
+                <button
+                  onClick={() => onDeletePosition(project.key, pos.relative_path)}
+                  className="shrink-0 opacity-0 group-hover/pos:opacity-100 text-[var(--muted-foreground)] hover:text-red-500 transition-opacity px-1"
+                  title="Position löschen"
+                  aria-label={`Position ${pos.position_nummer} löschen`}
+                >
+                  ✕
+                </button>
+              </div>
             );
           })}
         </div>

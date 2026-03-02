@@ -12,7 +12,11 @@ import { useCallback, useState } from "react";
 import { useBeamStore } from "@/stores/useBeamStore";
 import { useProjectStore } from "@/stores/useProjectStore";
 import { useLocalProjectStore } from "@/stores/useLocalProjectStore";
-import { readPositionFile, writePositionFile } from "@/fs/useLocalFileSystem";
+import {
+  readPositionFile,
+  writePositionFile,
+  deletePositionFile,
+} from "@/fs/useLocalFileSystem";
 import type { HandleKey } from "@/types/localProject";
 import type { CalculationRequest } from "@/types/beam";
 
@@ -25,6 +29,15 @@ interface UseLocalProjectActionsResult {
   error: string | null;
   loadLocalPosition: (key: HandleKey, relativePath: string) => Promise<void>;
   saveLocalPosition: () => Promise<void>;
+  createLocalPosition: (
+    key: HandleKey,
+    options: {
+      position_nummer: string;
+      position_name: string;
+      subfolder?: string;
+    }
+  ) => Promise<void>;
+  deleteLocalPosition: (key: HandleKey, relativePath: string) => Promise<void>;
   clearError: () => void;
 }
 
@@ -43,6 +56,9 @@ export function useLocalProjectActions(): UseLocalProjectActionsResult {
   const currentLocalProjectKey = useProjectStore((s) => s.currentLocalProjectKey);
 
   const projects = useLocalProjectStore((s) => s.projects);
+  const refreshProject = useLocalProjectStore((s) => s.refreshProject);
+
+  const clearPosition = useProjectStore((s) => s.clearPosition);
 
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -146,8 +162,118 @@ export function useLocalProjectActions(): UseLocalProjectActionsResult {
   ]);
 
   // -------------------------------------------------------------------------
+  // createLocalPosition
+  // -------------------------------------------------------------------------
+
+  const createLocalPosition = useCallback(
+    async (
+      key: HandleKey,
+      options: {
+        position_nummer: string;
+        position_name: string;
+        subfolder?: string;
+      }
+    ) => {
+      const project = projects.find((p) => p.key === key);
+      if (!project) {
+        setError(`Lokales Projekt nicht gefunden: ${key}`);
+        return;
+      }
+
+      setIsLoading(true);
+      setError(null);
+      try {
+        // Build a safe filename from nummer + name
+        const safeName = `${options.position_nummer}_${options.position_name}`
+          .replace(/[^a-zA-Z0-9.\-_ ]/g, "_")
+          .replace(/ /g, "_");
+        const fileName = `Position_${safeName}.json`;
+        const relativePath = options.subfolder
+          ? `${options.subfolder}/${fileName}`
+          : fileName;
+
+        const request = buildRequest();
+        const now = new Date().toISOString();
+
+        await writePositionFile(project.handle, relativePath, {
+          position_nummer: options.position_nummer,
+          position_name: options.position_name,
+          created: now,
+          active_module: "durchlauftraeger",
+          modules: { durchlauftraeger: request },
+        });
+
+        const displayName = `${options.position_nummer} – ${options.position_name}`;
+        setCurrentPosition(relativePath, displayName);
+        setProjectMode("local", key);
+
+        // Refresh the project's positions list in the store
+        await refreshProject(key);
+      } catch (err) {
+        setError(
+          err instanceof Error ? err.message : "Fehler beim Erstellen der Position"
+        );
+      } finally {
+        setIsLoading(false);
+      }
+    },
+    [projects, buildRequest, setCurrentPosition, setProjectMode, refreshProject]
+  );
+
+  // -------------------------------------------------------------------------
+  // deleteLocalPosition
+  // -------------------------------------------------------------------------
+
+  const deleteLocalPosition = useCallback(
+    async (key: HandleKey, relativePath: string) => {
+      const project = projects.find((p) => p.key === key);
+      if (!project) {
+        setError(`Lokales Projekt nicht gefunden: ${key}`);
+        return;
+      }
+
+      setIsLoading(true);
+      setError(null);
+      try {
+        await deletePositionFile(project.handle, relativePath);
+
+        // Clear form if the deleted position was active
+        if (
+          currentPositionPath === relativePath &&
+          currentLocalProjectKey === key
+        ) {
+          clearPosition();
+        }
+
+        await refreshProject(key);
+      } catch (err) {
+        setError(
+          err instanceof Error ? err.message : "Fehler beim Löschen der Position"
+        );
+      } finally {
+        setIsLoading(false);
+      }
+    },
+    [
+      projects,
+      currentPositionPath,
+      currentLocalProjectKey,
+      clearPosition,
+      refreshProject,
+    ]
+  );
+
+  // -------------------------------------------------------------------------
 
   const clearError = useCallback(() => setError(null), []);
 
-  return { isLoading, error, loadLocalPosition, saveLocalPosition, clearError };
+  return {
+    isLoading,
+    error,
+    loadLocalPosition,
+    saveLocalPosition,
+    createLocalPosition,
+    deleteLocalPosition,
+    clearError,
+  };
 }
