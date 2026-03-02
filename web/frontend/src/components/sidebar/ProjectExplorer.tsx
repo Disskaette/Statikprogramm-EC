@@ -824,22 +824,35 @@ export function ProjectExplorer() {
           break;
 
         case "renamePosition": {
-          // The InputDialog provides a combined "Nummer – Name" string.
-          // We split on first " – " to separate nummer and name.
-          const raw = inputValue ?? "";
-          const sepIdx = raw.indexOf(" – ");
+          // Accept both en-dash (–) and regular hyphen (-) as separator so
+          // the user can type "1.01 - HT 2" or "1.01 – HT 2" interchangeably.
+          // If no separator is found, treat the whole input as the name and
+          // keep the existing position_nummer.
+          const raw = inputValue?.trim() ?? "";
+          if (!raw) break;
+
+          const pos = positions.find((p) => p.relative_path === dialog.path);
+          const oldNummer = pos?.position_nummer ?? "";
+
+          // Prefer en-dash separator; fall back to regular hyphen
+          const enDashIdx = raw.indexOf(" \u2013 "); // " – "
+          const hyphenIdx  = raw.indexOf(" - ");
+          const sepIdx = enDashIdx !== -1 ? enDashIdx : hyphenIdx;
+
           let newNummer: string;
           let newName: string;
           if (sepIdx !== -1) {
-            newNummer = raw.slice(0, sepIdx).trim();
-            newName = raw.slice(sepIdx + 3).trim();
+            newNummer = raw.slice(0, sepIdx).trim() || oldNummer;
+            newName   = raw.slice(sepIdx + 3).trim();
           } else {
-            // Fallback: treat the whole input as the name, keep old nummer
-            const pos = positions.find((p) => p.relative_path === dialog.path);
-            newNummer = pos?.position_nummer ?? "";
-            newName = raw.trim();
+            // No separator – keep old nummer, use entire input as name
+            newNummer = oldNummer;
+            newName   = raw;
           }
-          if (newNummer && newName) {
+
+          // newName is the only required field; backend keeps old nummer
+          // when new_nummer is empty (see routes/projects.py rename endpoint)
+          if (newName) {
             await renamePosition(projectId, dialog.path, newNummer, newName);
           }
           break;
