@@ -29,3 +29,13 @@ interface FileSystemDirectoryHandle {
   values(): AsyncIterableIterator<FileSystemHandle>;
   [Symbol.asyncIterator](): AsyncIterableIterator<[string, FileSystemHandle]>;
 }
+
+interface DirectoryPickerOptions {
+  mode?: "read" | "readwrite";
+  startIn?: FileSystemHandle | "desktop" | "documents" | "downloads" | "music" | "pictures" | "videos";
+  id?: string;
+}
+
+interface Window {
+  showDirectoryPicker(options?: DirectoryPickerOptions): Promise<FileSystemDirectoryHandle>;
+}

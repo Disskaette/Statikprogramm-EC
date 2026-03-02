@@ -32,9 +32,7 @@ export async function pickDirectory(): Promise<FileSystemDirectoryHandle> {
       "Lokale Projekte werden in Chrome, Edge und Firefox 111+ unterstützt."
     );
   }
-  return (window as unknown as {
-    showDirectoryPicker: (options?: { mode?: string }) => Promise<FileSystemDirectoryHandle>;
-  }).showDirectoryPicker({ mode: "readwrite" });
+  return window.showDirectoryPicker({ mode: "readwrite" });
 }
 
 // ---------------------------------------------------------------------------
@@ -65,21 +63,31 @@ async function readProjectJson(
     const text = await file.text();
     const data = JSON.parse(text) as Record<string, unknown>;
     return {
-      uuid: (data.uuid as string) ?? crypto.randomUUID(),
+      uuid: (data.uuid as string) || crypto.randomUUID(),
       name: (data.name as string) ?? handle.name,
       created: (data.created as string) ?? new Date().toISOString(),
       last_modified: (data.last_modified as string) ?? new Date().toISOString(),
       description: (data.description as string) ?? "",
     };
   } catch {
-    // No project.json → synthesise metadata from folder name
-    return {
+    // No project.json → generate stable metadata and persist it so future
+    // calls always return the same UUID (avoids duplicate entries on re-scan).
+    const meta = {
       uuid: crypto.randomUUID(),
       name: handle.name,
       created: new Date().toISOString(),
       last_modified: new Date().toISOString(),
       description: "",
     };
+    try {
+      const projectFile = await handle.getFileHandle("project.json", { create: true });
+      const writable = await projectFile.createWritable();
+      await writable.write(JSON.stringify(meta, null, 2));
+      await writable.close();
+    } catch {
+      // Silently ignore if we can't write (e.g. read-only volume)
+    }
+    return meta;
   }
 }
 
