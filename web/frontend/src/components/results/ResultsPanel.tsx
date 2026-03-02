@@ -209,12 +209,7 @@ export function ResultsPanel() {
             </div>
           )}
 
-          {/* 3. EC5 design checks */}
-          {results.ec5_nachweise && (
-            <EC5NachweiseCard ec5Nachweise={results.ec5_nachweise} />
-          )}
-
-          {/* 4. Load combinations (collapsible) */}
+          {/* 3. Load combinations (collapsible) */}
           {(results.lastfallkombinationen ??
             results.gzg_lastfallkombinationen) && (
             <LastkombinationenCard
@@ -223,6 +218,11 @@ export function ResultsPanel() {
                 results.gzg_lastfallkombinationen ?? null
               }
             />
+          )}
+
+          {/* 4. EC5 design checks */}
+          {results.ec5_nachweise && (
+            <EC5NachweiseCard ec5Nachweise={results.ec5_nachweise} />
           )}
 
           {/* Fallback when all result sections are null (quick mode may omit some) */}
