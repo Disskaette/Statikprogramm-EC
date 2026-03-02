@@ -1,11 +1,13 @@
 /**
  * ForceCharts – Schnittkraftverläufe (section force diagrams).
  *
- * Renders three stacked Plotly charts and a simple SVG system sketch:
- *   1. System sketch (SVG) – beam, supports, field labels, span dimensions
- *   2. Moment diagram M [kNm]  – from GZT data, y-axis inverted (EC convention)
- *   3. Shear diagram V [kN]   – from GZT data, y-axis inverted
- *   4. Deflection diagram w [mm] – from GZG (worst case) or GZT, y-axis inverted
+ * Renders three stacked Plotly charts:
+ *   1. Moment diagram M [kNm]  – from GZT data, y-axis inverted (EC convention)
+ *   2. Shear diagram V [kN]   – from GZT data, y-axis inverted
+ *   3. Deflection diagram w [mm] – from GZG (worst case) or GZT, y-axis not inverted
+ *
+ * The beam system sketch (SVG) is rendered separately in BeamSystemSketch.tsx
+ * so it can be placed above these charts in the results layout.
  *
  * Unit conventions (internal API units → display units):
  *   moment    [Nmm] → [kNm]  (÷ 1e6)
@@ -21,6 +23,11 @@ import Plotly from "plotly.js-dist-min";
 import createPlotlyComponent from "react-plotly.js/factory";
 import { useBeamStore } from "@/stores/useBeamStore";
 import { useTheme } from "@/hooks/useTheme";
+import {
+  buildSpanEntries,
+  totalLength,
+  fieldBoundaryX,
+} from "./beamGeometry";
 
 // Build Plot component once at module level (avoids recreation on every render)
 const Plot = createPlotlyComponent(Plotly);
@@ -35,101 +42,6 @@ function getCssVar(name: string): string {
   return getComputedStyle(document.documentElement)
     .getPropertyValue(name)
     .trim();
-}
-
-// ---------------------------------------------------------------------------
-// Beam geometry helpers
-// ---------------------------------------------------------------------------
-
-/**
- * Ordered list of span entries from the store spannweiten dict.
- * Returns: [{ key, length, isCantilever }]
- * Order: kragarm_links, feld_1..feld_N, kragarm_rechts
- */
-interface SpanEntry {
-  key: string;
-  length: number;
-  isCantilever: boolean;
-}
-
-function buildSpanEntries(
-  spannweiten: Record<string, number>,
-  feldanzahl: number,
-  kragarmLinks: boolean,
-  kragarmRechts: boolean
-): SpanEntry[] {
-  const entries: SpanEntry[] = [];
-
-  if (kragarmLinks) {
-    entries.push({
-      key: "kragarm_links",
-      length: spannweiten["kragarm_links"] ?? 1.5,
-      isCantilever: true,
-    });
-  }
-
-  for (let i = 1; i <= feldanzahl; i++) {
-    entries.push({
-      key: `feld_${i}`,
-      length: spannweiten[`feld_${i}`] ?? 5.0,
-      isCantilever: false,
-    });
-  }
-
-  if (kragarmRechts) {
-    entries.push({
-      key: "kragarm_rechts",
-      length: spannweiten["kragarm_rechts"] ?? 1.5,
-      isCantilever: true,
-    });
-  }
-
-  return entries;
-}
-
-/** Total beam length from left end to right end [m] */
-function totalLength(spans: SpanEntry[]): number {
-  return spans.reduce((sum, s) => sum + s.length, 0);
-}
-
-/** x-positions of all support points [m] (field boundaries, excluding cantilever free ends) */
-function supportPositions(
-  spans: SpanEntry[],
-  kragarmLinks: boolean,
-  kragarmRechts: boolean
-): number[] {
-  const positions: number[] = [];
-  let x = 0;
-
-  for (let i = 0; i < spans.length; i++) {
-    // A support exists at the START of this span if:
-    //  - it is NOT the left free cantilever end
-    const isLeftCantilever = kragarmLinks && i === 0;
-    if (!isLeftCantilever) {
-      positions.push(x);
-    }
-    x += spans[i].length;
-  }
-
-  // Right-most support: at the right end only if it is not a free cantilever tip
-  const isRightCantilever =
-    kragarmRechts && spans.length > 0 && spans[spans.length - 1].isCantilever;
-  if (!isRightCantilever) {
-    positions.push(x);
-  }
-
-  return [...new Set(positions)].sort((a, b) => a - b);
-}
-
-/** x-positions of all interior field boundaries (for Plotly vertical lines) */
-function fieldBoundaryX(spans: SpanEntry[]): number[] {
-  const boundaries: number[] = [];
-  let x = 0;
-  for (let i = 0; i < spans.length - 1; i++) {
-    x += spans[i].length;
-    boundaries.push(x);
-  }
-  return boundaries;
 }
 
 // ---------------------------------------------------------------------------
@@ -255,194 +167,10 @@ function buildLayout(
 }
 
 // ---------------------------------------------------------------------------
-// System sketch (SVG)
-// ---------------------------------------------------------------------------
-
-interface SystemSketchProps {
-  spans: SpanEntry[];
-  kragarmLinks: boolean;
-  kragarmRechts: boolean;
-}
-
-function SystemSketch({ spans, kragarmLinks, kragarmRechts }: SystemSketchProps) {
-  const total = totalLength(spans);
-  if (total <= 0 || spans.length === 0) return null;
-
-  // SVG canvas dimensions (viewBox units)
-  const W = 800;
-  const BEAM_Y = 40;      // y-coordinate of the beam line
-  const LABEL_Y = 22;     // y for field labels above beam
-  const DIM_Y = 75;       // y for dimension text below beam
-  const SUPPORT_H = 14;   // triangle height
-  const SVG_H = 90;
-
-  const toX = (xM: number) => (xM / total) * W;
-
-  // Support positions
-  const supports = supportPositions(spans, kragarmLinks, kragarmRechts);
-
-  // Triangle SVG path for pinned support (pointing downward from beam)
-  function trianglePath(cx: number): string {
-    const x = toX(cx);
-    const y0 = BEAM_Y;
-    const half = SUPPORT_H * 0.7;
-    return `M ${x} ${y0} L ${x - half} ${y0 + SUPPORT_H} L ${x + half} ${y0 + SUPPORT_H} Z`;
-  }
-
-  // Field label and dimension rendering
-  let xAccum = 0;
-  const fields: { x0: number; x1: number; label: string; lengthM: number; isField: boolean }[] = [];
-  spans.forEach((span, i) => {
-    const isInnerField = !span.isCantilever;
-    // Count only non-cantilever fields for labeling
-    let fieldLabel = "";
-    if (!span.isCantilever) {
-      // Count how many regular fields come before this
-      const fieldIdx = spans.slice(0, i).filter((s) => !s.isCantilever).length + 1;
-      fieldLabel = `Feld ${fieldIdx}`;
-    } else if (span.key === "kragarm_links") {
-      fieldLabel = "Kragarm";
-    } else {
-      fieldLabel = "Kragarm";
-    }
-    fields.push({
-      x0: xAccum,
-      x1: xAccum + span.length,
-      label: fieldLabel,
-      lengthM: span.length,
-      isField: isInnerField,
-    });
-    xAccum += span.length;
-  });
-
-  const fgColor = getCssVar("--foreground") || "#0a0a0a";
-  const mutedColor = getCssVar("--muted-foreground") || "#737373";
-  const borderColor = getCssVar("--border") || "#e5e7eb";
-
-  return (
-    <svg
-      viewBox={`0 0 ${W} ${SVG_H}`}
-      className="w-full"
-      style={{ maxHeight: SVG_H, overflow: "visible" }}
-      aria-label="Systemskizze Träger"
-      role="img"
-    >
-      {/* Beam line */}
-      <line
-        x1={toX(0)}
-        y1={BEAM_Y}
-        x2={toX(total)}
-        y2={BEAM_Y}
-        stroke={fgColor}
-        strokeWidth={3}
-      />
-
-      {/* Support triangles */}
-      {supports.map((sx) => (
-        <path
-          key={sx}
-          d={trianglePath(sx)}
-          fill={fgColor}
-          stroke="none"
-          opacity={0.85}
-        />
-      ))}
-
-      {/* Ground lines below supports */}
-      {supports.map((sx) => (
-        <line
-          key={`ground-${sx}`}
-          x1={toX(sx) - SUPPORT_H * 0.9}
-          y1={BEAM_Y + SUPPORT_H + 1}
-          x2={toX(sx) + SUPPORT_H * 0.9}
-          y2={BEAM_Y + SUPPORT_H + 1}
-          stroke={borderColor}
-          strokeWidth={1.5}
-        />
-      ))}
-
-      {/* Field boundary tick marks at the top of beam */}
-      {fieldBoundaryX(spans).map((bx) => (
-        <line
-          key={`tick-${bx}`}
-          x1={toX(bx)}
-          y1={BEAM_Y - 5}
-          x2={toX(bx)}
-          y2={BEAM_Y + 5}
-          stroke={mutedColor}
-          strokeWidth={1}
-        />
-      ))}
-
-      {/* Field labels and dimension lines */}
-      {fields.map((f) => {
-        const cx = toX((f.x0 + f.x1) / 2);
-        const x0px = toX(f.x0);
-        const x1px = toX(f.x1);
-        return (
-          <g key={f.label + f.x0}>
-            {/* Field label */}
-            <text
-              x={cx}
-              y={LABEL_Y}
-              textAnchor="middle"
-              fontSize={11}
-              fill={mutedColor}
-              fontFamily="system-ui, sans-serif"
-            >
-              {f.label}
-            </text>
-
-            {/* Dimension line */}
-            <line
-              x1={x0px + 4}
-              y1={DIM_Y - 8}
-              x2={x1px - 4}
-              y2={DIM_Y - 8}
-              stroke={borderColor}
-              strokeWidth={1}
-              markerEnd="none"
-            />
-            {/* Left tick */}
-            <line
-              x1={x0px + 4}
-              y1={DIM_Y - 12}
-              x2={x0px + 4}
-              y2={DIM_Y - 4}
-              stroke={borderColor}
-              strokeWidth={1}
-            />
-            {/* Right tick */}
-            <line
-              x1={x1px - 4}
-              y1={DIM_Y - 12}
-              x2={x1px - 4}
-              y2={DIM_Y - 4}
-              stroke={borderColor}
-              strokeWidth={1}
-            />
-
-            {/* Span dimension text */}
-            <text
-              x={cx}
-              y={DIM_Y + 5}
-              textAnchor="middle"
-              fontSize={10}
-              fill={mutedColor}
-              fontFamily="system-ui, sans-serif"
-            >
-              {f.lengthM.toFixed(2)} m
-            </text>
-          </g>
-        );
-      })}
-    </svg>
-  );
-}
-
-// ---------------------------------------------------------------------------
 // Main component
 // ---------------------------------------------------------------------------
+// Note: SystemSketch is now in BeamSystemSketch.tsx (displayed separately above
+// the charts in ResultsPanel) and no longer rendered here.
 
 export function ForceCharts() {
   const results = useBeamStore((s) => s.results);
@@ -606,17 +334,8 @@ export function ForceCharts() {
 
   return (
     <div className="space-y-0">
-      {/* System sketch */}
-      <div className="rounded-t-lg border border-[var(--border)] bg-[var(--muted)]/20 px-4 pt-3 pb-1">
-        <SystemSketch
-          spans={spans}
-          kragarmLinks={kragarmLinks}
-          kragarmRechts={kragarmRechts}
-        />
-      </div>
-
       {/* Moment diagram M */}
-      <div className="border-x border-b border-[var(--border)] bg-[var(--background)] px-2 pt-1 pb-0">
+      <div className="rounded-t-lg border border-[var(--border)] bg-[var(--background)] px-2 pt-1 pb-0">
         <Plot
           data={momentData}
           layout={momentLayout}

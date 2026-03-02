@@ -2,10 +2,12 @@
  * ResultsPanel – main results container.
  *
  * Reads calculation results directly from the Zustand store and composes the
- * individual result display components:
- *   1. SchnittgroessenSummary  – max moment / shear / deflection header card
- *   2. EC5NachweiseCard        – all five EC5 verification checks
- *   3. LastkombinationenCard   – collapsible ULS + SLS load combinations
+ * individual result display components in this order:
+ *   1. BeamSystemSketch       – SVG beam diagram (always visible, top)
+ *   2. Schnittkraftverläufe   – collapsible section with SchnittgroessenSummary
+ *                               + three Plotly force diagrams
+ *   3. EC5NachweiseCard        – all five EC5 verification checks
+ *   4. LastkombinationenCard   – collapsible ULS + SLS load combinations
  *
  * While a recalculation is running on top of existing results a semi-transparent
  * loading overlay is shown so the user knows the values are being updated.
@@ -18,7 +20,9 @@
  *   calculationError                        → error banner (always shown)
  */
 
+import { useState } from "react";
 import { useBeamStore } from "@/stores/useBeamStore";
+import { BeamSystemSketch } from "./BeamSystemSketch";
 import { SchnittgroessenSummary } from "./SchnittgroessenSummary";
 import { EC5NachweiseCard } from "./EC5NachweiseCard";
 import { LastkombinationenCard } from "./LastkombinationenCard";
@@ -131,6 +135,9 @@ export function ResultsPanel() {
   const isCalculating = useBeamStore((s) => s.isCalculating);
   const error = useBeamStore((s) => s.calculationError);
 
+  // Schnittkraftverläufe section starts collapsed – users open it on demand
+  const [isSchnittgraeffeOpen, setIsSchnittgraeffeOpen] = useState(false);
+
   return (
     <div className="space-y-4">
       {/* Section heading */}
@@ -150,26 +157,61 @@ export function ResultsPanel() {
           {/* Recalculating overlay – shown when updating existing results */}
           {isCalculating && <RecalculatingOverlay />}
 
-          {/* 1. Section forces summary */}
+          {/* 1. Beam system sketch (always visible, top) */}
+          <BeamSystemSketch />
+
+          {/* 2. Schnittkraftverläufe (collapsible) */}
           {results.schnittgroessen && (
-            <SchnittgroessenSummary
-              schnittgroessen={results.schnittgroessen}
-            />
+            <div className="rounded-lg border border-[var(--border)] overflow-hidden">
+              {/* Collapse toggle header */}
+              <button
+                type="button"
+                onClick={() => setIsSchnittgraeffeOpen((o) => !o)}
+                className="w-full flex items-center justify-between px-4 py-3 text-left hover:bg-[var(--muted)]/40 transition-colors"
+                aria-expanded={isSchnittgraeffeOpen}
+              >
+                <span className="text-sm font-semibold text-[var(--foreground)]">
+                  Schnittkraftverläufe
+                </span>
+                <svg
+                  className={`h-4 w-4 text-[var(--muted-foreground)] transition-transform duration-200 ${
+                    isSchnittgraeffeOpen ? "rotate-180" : ""
+                  }`}
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                  strokeWidth={2}
+                  aria-hidden="true"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    d="M19 9l-7 7-7-7"
+                  />
+                </svg>
+              </button>
+
+              {/* Collapsible body */}
+              {isSchnittgraeffeOpen && (
+                <div className="border-t border-[var(--border)]">
+                  {/* Max values summary */}
+                  <div className="px-4 pt-3 pb-2">
+                    <SchnittgroessenSummary
+                      schnittgroessen={results.schnittgroessen}
+                    />
+                  </div>
+                  {/* Force diagrams */}
+                  <div className="px-4 pb-3">
+                    <ForceCharts />
+                  </div>
+                </div>
+              )}
+            </div>
           )}
 
-          {/* 2. EC5 design checks */}
+          {/* 3. EC5 design checks */}
           {results.ec5_nachweise && (
             <EC5NachweiseCard ec5Nachweise={results.ec5_nachweise} />
-          )}
-
-          {/* 3. Section force diagrams (Schnittkraftverläufe) */}
-          {results.schnittgroessen && (
-            <section>
-              <h3 className="text-sm font-semibold text-[var(--foreground)] mb-2 uppercase tracking-wide">
-                Schnittkraftverläufe
-              </h3>
-              <ForceCharts />
-            </section>
           )}
 
           {/* 4. Load combinations (collapsible) */}
