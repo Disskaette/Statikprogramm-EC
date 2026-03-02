@@ -14,9 +14,9 @@
  *   ausnutzung – utilisation ratio η
  *
  * Utilisation bar colour thresholds:
- *   η ≤ 0.80  → green
- *   η ≤ 1.00  → amber
- *   η >  1.00 → red
+ *   η <  0.90 → green  (ok)
+ *   η ≤  1.00 → orange (approaching limit; 100% still passes)
+ *   η >  1.00 → red    (exceeded)
  */
 
 import katex from "katex";
@@ -62,8 +62,8 @@ const TITLES: Record<CheckKey, string> = {
   durchbiegung_net_fin: "Netto-End-Durchbiegung",
 };
 
-// Bar width is capped at 150 % visual width so extreme overloads remain readable.
-const BAR_MAX_ETA = 1.5;
+// Bar fills to 100 % at η = 1.0; values above 1.0 keep the bar full (clipped).
+const BAR_MAX_ETA = 1.0;
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -84,10 +84,15 @@ function stripDelimiters(latex: string): string {
   return trimmed;
 }
 
-/** Determine Tailwind colour class based on η value */
+/**
+ * Determine Tailwind colour class based on η value.
+ *   η <  0.90 → green  (utilisation acceptable)
+ *   η ≤  1.00 → orange (approaching limit; η = 1.0 is still ok)
+ *   η >  1.00 → red    (limit exceeded)
+ */
 function barColour(eta: number): string {
-  if (eta <= 0.8) return "bg-green-500";
-  if (eta <= 1.0) return "bg-amber-500";
+  if (eta < 0.9) return "bg-green-500";
+  if (eta <= 1.0) return "bg-orange-500";
   return "bg-red-500";
 }
 
