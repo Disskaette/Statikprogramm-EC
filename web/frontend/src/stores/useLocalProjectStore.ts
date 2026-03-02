@@ -92,31 +92,41 @@ export const useLocalProjectStore = create<LocalProjectState>((set, get) => ({
     set({ isInitialising: true });
     try {
       const storedKeys = await listHandleKeys();
+      const entries: LocalProjectEntry[] = [];
+
       for (const key of storedKeys) {
         const handle = await loadHandle(key);
         if (!handle) continue;
+
         const permission = await queryHandlePermission(handle);
         const hasPermission = permission === "granted";
+
         if (hasPermission) {
-          const { meta, positions } = await scanProjectFolder(handle);
-          set((state) => ({
-            projects: [...state.projects, { key, handle, meta, positions, hasPermission: true }],
-          }));
+          try {
+            const { meta, positions } = await scanProjectFolder(handle);
+            entries.push({ key, handle, meta, positions, hasPermission: true });
+          } catch {
+            // Handle became unreadable since last session – skip silently
+          }
         } else {
-          set((state) => ({
-            projects: [
-              ...state.projects,
-              {
-                key,
-                handle,
-                meta: { uuid: "", name: handle.name, created: "", last_modified: "", description: "" },
-                positions: [],
-                hasPermission: false,
-              },
-            ],
-          }));
+          entries.push({
+            key,
+            handle,
+            meta: {
+              uuid: "",
+              name: handle.name,
+              created: "",
+              last_modified: "",
+              description: "",
+            },
+            positions: [],
+            hasPermission: false,
+          });
         }
       }
+
+      // Single set() call – one re-render for all restored projects
+      set({ projects: entries });
     } finally {
       set({ isInitialising: false });
     }
