@@ -1,9 +1,10 @@
 /**
  * InputForm – main form container that assembles all input sections.
  *
- * Calculation is triggered automatically via debounce whenever any form state
- * changes. The user does not need to click a "Berechnen" button (though one
- * is provided as a fallback / explicit trigger).
+ * Calculation is triggered automatically via debounce (600 ms) whenever any
+ * form state changes. Saving is triggered automatically via useAutoSave
+ * (2 000 ms debounce) whenever isDirty is set.
+ * Neither a "Berechnen" nor a "Speichern" button is needed.
  *
  * Status indicators:
  *  - Spinner + "Berechnung läuft..." when isCalculating
@@ -12,6 +13,7 @@
  */
 
 import { useEffect, useRef } from "react";
+import { useAutoSave } from "@/hooks/useAutoSave";
 import { useBeamStore } from "@/stores/useBeamStore";
 import { useCalculation } from "@/hooks/useCalculation";
 import { useProjectStore } from "@/stores/useProjectStore";
@@ -99,6 +101,9 @@ export function InputForm() {
   const { triggerCalculation } = useCalculation();
   const setDirty = useProjectStore((s) => s.setDirty);
 
+  // Auto-save: saves 2 s after the last change when a position is loaded
+  useAutoSave();
+
   // Grab state fields that should trigger recalculation when they change.
   // We use a stable selector that serialises the relevant state into a string
   // so useEffect's dependency comparison works correctly.
@@ -141,10 +146,6 @@ export function InputForm() {
     triggerCalculation,
   ]);
 
-  const handleManualCalculate = () => {
-    triggerCalculation();
-  };
-
   return (
     <div className="space-y-4">
       {/* Calculation mode toggle at the top */}
@@ -161,17 +162,9 @@ export function InputForm() {
       <CrossSectionSection />
       <DeflectionSection />
 
-      {/* Bottom bar: status + manual trigger */}
-      <div className="flex items-center justify-between gap-4 pt-2">
+      {/* Bottom bar: status only (calculation + save are fully automatic) */}
+      <div className="pt-2">
         <StatusBar />
-
-        <button
-          type="button"
-          onClick={handleManualCalculate}
-          className="ml-auto shrink-0 rounded-md bg-[var(--primary)] px-4 py-2 text-sm font-medium text-[var(--primary-foreground)] hover:opacity-90 active:opacity-80 transition-opacity"
-        >
-          Berechnen
-        </button>
       </div>
     </div>
   );

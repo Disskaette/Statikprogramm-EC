@@ -20,13 +20,13 @@ function App() {
         {/* Two-column layout: input left, results right.
             On small screens both columns stack vertically. */}
         <div className="flex flex-col lg:flex-row gap-6 p-6">
-          {/* Input form – slightly narrower column */}
-          <div className="w-full lg:w-1/2 xl:w-2/5 shrink-0">
+          {/* Input form – equal width column */}
+          <div className="w-full lg:w-1/2 shrink-0">
             <InputForm />
           </div>
 
-          {/* Results panel – wider column */}
-          <div className="w-full lg:w-1/2 xl:w-3/5 min-w-0">
+          {/* Results panel – equal width column */}
+          <div className="w-full lg:w-1/2 min-w-0">
             <ResultsPanel />
           </div>
         </div>

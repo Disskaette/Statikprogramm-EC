@@ -535,7 +535,7 @@ export function ProjectExplorer() {
     isLoading: actionLoading,
     error: actionError,
     loadPosition,
-    savePosition,
+    // savePosition removed – saving is now handled by useAutoSave in InputForm
     createPosition,
     deletePosition,
     deletePositions,
@@ -611,8 +611,6 @@ export function ProjectExplorer() {
     },
     [currentProjectId, loadPosition]
   );
-
-  const handleSave = () => savePosition();
 
   const handleCreatePosition = (
     nummer: string,
@@ -1162,24 +1160,7 @@ export function ProjectExplorer() {
 
         {/* Action buttons */}
         <div className="flex gap-1">
-          {/* Save button – only when a position is loaded */}
-          {currentPositionPath && (
-            <button
-              type="button"
-              onClick={handleSave}
-              disabled={actionLoading || !isDirty}
-              className={[
-                "flex-1 rounded px-2 py-1 text-xs transition-colors",
-                isDirty
-                  ? "bg-[var(--primary)] text-white hover:opacity-90"
-                  : "border border-[var(--border)] text-[var(--muted-foreground)]",
-                "disabled:opacity-50",
-              ].join(" ")}
-              title={isDirty ? "Änderungen speichern" : "Keine Änderungen"}
-            >
-              {actionLoading ? "…" : "Speichern"}
-            </button>
-          )}
+          {/* Save button removed – saving happens automatically (useAutoSave, 2s debounce) */}
 
           {/* New position button – only when a project is selected */}
           {currentProjectId && (

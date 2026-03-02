@@ -42,16 +42,19 @@ interface Props {
 // Constants
 // ---------------------------------------------------------------------------
 
-/** Key order for consistent display */
-const CHECK_KEYS = [
-  "biegung",
-  "schub",
+/** Strength checks – each rendered as an individual card */
+const STRENGTH_KEYS = ["biegung", "schub"] as const;
+
+/** SLS deflection checks – grouped into one combined card */
+const DEFLECTION_KEYS = [
   "durchbiegung_inst",
   "durchbiegung_fin",
   "durchbiegung_net_fin",
 ] as const;
 
-type CheckKey = (typeof CHECK_KEYS)[number];
+type StrengthKey = (typeof STRENGTH_KEYS)[number];
+type DeflectionKey = (typeof DEFLECTION_KEYS)[number];
+type CheckKey = StrengthKey | DeflectionKey;
 
 /** Static title fallbacks (used when `bezeichnung` is absent) */
 const TITLES: Record<CheckKey, string> = {
@@ -195,6 +198,94 @@ function CheckCard({ checkKey, nachweis }: CheckCardProps) {
 }
 
 // ---------------------------------------------------------------------------
+// Combined SLS deflection card
+// ---------------------------------------------------------------------------
+
+/**
+ * DurchbiegungsCard – groups all three SLS deflection checks into one card.
+ *
+ * Shows a single bar with the maximum η across the three sub-checks plus a
+ * compact row per sub-check (name | η value | pass/fail icon | LaTeX formula).
+ * This keeps the results panel compact while still showing all detail.
+ */
+function DurchbiegungsCard({ data }: { data: EC5NachweiseResult }) {
+  const checks = DEFLECTION_KEYS.map((key) => ({
+    key,
+    nachweis: data[key],
+  })).filter((c): c is { key: DeflectionKey; nachweis: EC5Nachweis } =>
+    c.nachweis != null
+  );
+
+  if (checks.length === 0) return null;
+
+  const maxEta = Math.max(...checks.map((c) => c.nachweis.ausnutzung));
+  const allPassed = checks.every((c) => c.nachweis.erfuellt);
+
+  const maxEtaColour =
+    maxEta <= 1.0
+      ? "text-green-600 dark:text-green-400"
+      : "text-red-600 dark:text-red-400";
+
+  return (
+    <div className="rounded-lg border border-[var(--border)] p-4 space-y-3">
+      {/* Header: group title + overall pass/fail */}
+      <div className="flex items-center justify-between gap-2">
+        <h3 className="text-sm font-semibold text-[var(--foreground)]">
+          Gebrauchstauglichkeit (GZG)
+        </h3>
+        <span aria-label={allPassed ? "erfüllt" : "nicht erfüllt"}>
+          {allPassed ? "✅" : "❌"}
+        </span>
+      </div>
+
+      {/* Single bar – maximum η of the three checks */}
+      <div className="space-y-1">
+        <UtilisationBar eta={maxEta} />
+        <div className="flex justify-between items-center text-xs">
+          <span className="text-[var(--muted-foreground)]">
+            max. Ausnutzung
+          </span>
+          <span className={`font-mono font-semibold tabular-nums ${maxEtaColour}`}>
+            η = {maxEta.toFixed(2)}
+          </span>
+        </div>
+      </div>
+
+      {/* Sub-checks: one row + formula per deflection check */}
+      <div className="space-y-3 pt-1 border-t border-[var(--border)]">
+        {checks.map(({ key, nachweis }) => {
+          const bezeichnung = nachweis["bezeichnung"] as string | undefined;
+          const title = bezeichnung ?? TITLES[key];
+          const eta = nachweis.ausnutzung;
+          const erfuellt = nachweis.erfuellt;
+          const etaColour = erfuellt
+            ? "text-green-600 dark:text-green-400"
+            : "text-red-600 dark:text-red-400";
+
+          return (
+            <div key={key} className="space-y-1.5">
+              {/* Title row */}
+              <div className="flex items-center justify-between gap-2 text-xs">
+                <span className="font-medium text-[var(--foreground)]">
+                  {title}
+                </span>
+                <span className={`font-mono tabular-nums ${etaColour}`}>
+                  η = {eta.toFixed(2)}&nbsp;{erfuellt ? "✅" : "❌"}
+                </span>
+              </div>
+              {/* LaTeX formula */}
+              <div className="rounded-md bg-[var(--muted)]/40 px-3 py-2 overflow-x-auto">
+                <KatexFormula latex={nachweis.latex} />
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Main component
 // ---------------------------------------------------------------------------
 
@@ -206,14 +297,16 @@ export function EC5NachweiseCard({ ec5Nachweise }: Props) {
       <h2 className="text-base font-semibold text-[var(--foreground)]">
         EC5-Nachweise
       </h2>
-      {CHECK_KEYS.map((key) => {
+
+      {/* Strength checks (ULS) – each as its own card */}
+      {STRENGTH_KEYS.map((key) => {
         const nachweis = data[key];
         if (!nachweis) return null;
-
-        return (
-          <CheckCard key={key} checkKey={key} nachweis={nachweis} />
-        );
+        return <CheckCard key={key} checkKey={key} nachweis={nachweis} />;
       })}
+
+      {/* SLS deflection checks – grouped in one combined card */}
+      <DurchbiegungsCard data={data} />
     </div>
   );
 }
