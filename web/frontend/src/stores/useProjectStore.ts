@@ -41,6 +41,14 @@ interface ProjectState {
   /** Relative paths of positions being dragged */
   dragPaths: string[];
 
+  /** Whether the active position lives on the server or on local disk */
+  currentProjectMode: "server" | "local";
+  /**
+   * For local positions: the HandleKey of the LocalProjectEntry
+   * (e.g. "local:Demo_Wohnhaus"). Null when mode is "server".
+   */
+  currentLocalProjectKey: string | null;
+
   // ---- Actions ----
   setCurrentProject: (projectId: string | null) => void;
   setCurrentPosition: (path: string | null, name: string | null) => void;
@@ -64,6 +72,9 @@ interface ProjectState {
    * @param paths    - which positions are being dragged (ignored when dragging=false)
    */
   setDragging: (dragging: boolean, paths?: string[]) => void;
+
+  /** Switch between server and local project mode */
+  setProjectMode: (mode: "server" | "local", localKey?: string) => void;
 }
 
 // ---------------------------------------------------------------------------
@@ -78,6 +89,8 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
   selectedPaths: [],
   isDragging: false,
   dragPaths: [],
+  currentProjectMode: "server",
+  currentLocalProjectKey: null,
 
   // ---- Basic project / position actions ----
 
@@ -98,6 +111,8 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
       currentPositionPath: null,
       currentPositionName: null,
       isDirty: false,
+      currentProjectMode: "server",
+      currentLocalProjectKey: null,
     }),
 
   // ---- Selection actions ----
@@ -127,5 +142,11 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
     set({
       isDragging: dragging,
       dragPaths: dragging ? (paths ?? get().dragPaths) : [],
+    }),
+
+  setProjectMode: (mode, localKey) =>
+    set({
+      currentProjectMode: mode,
+      currentLocalProjectKey: localKey ?? null,
     }),
 }));

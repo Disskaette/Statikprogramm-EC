@@ -1,8 +1,10 @@
+import { useEffect } from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Layout } from "@/components/layout/Layout";
 import { InputForm } from "@/components/input/InputForm";
 import { ResultsPanel } from "@/components/results/ResultsPanel";
 import { ProjectExplorer } from "@/components/sidebar/ProjectExplorer";
+import { useLocalProjectStore } from "@/stores/useLocalProjectStore";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -14,6 +16,11 @@ const queryClient = new QueryClient({
 });
 
 function App() {
+  const initLocalProjects = useLocalProjectStore((s) => s.initLocalProjects);
+  useEffect(() => {
+    initLocalProjects();
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
   return (
     <QueryClientProvider client={queryClient}>
       <Layout sidebar={<ProjectExplorer />}>
