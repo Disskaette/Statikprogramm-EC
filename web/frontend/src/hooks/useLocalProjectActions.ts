@@ -9,6 +9,7 @@
  */
 
 import { useCallback, useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { useBeamStore } from "@/stores/useBeamStore";
 import { useProjectStore } from "@/stores/useProjectStore";
 import { useLocalProjectStore } from "@/stores/useLocalProjectStore";
@@ -17,6 +18,7 @@ import {
   writePositionFile,
   deletePositionFile,
 } from "@/fs/useLocalFileSystem";
+import { api } from "@/lib/api";
 import type { HandleKey } from "@/types/localProject";
 import type { CalculationRequest } from "@/types/beam";
 
@@ -38,6 +40,10 @@ interface UseLocalProjectActionsResult {
     }
   ) => Promise<void>;
   deleteLocalPosition: (key: HandleKey, relativePath: string) => Promise<void>;
+  uploadToServer: (
+    key: HandleKey,
+    options: { projectName: string; visibility: "private" | "shared" }
+  ) => Promise<void>;
   clearError: () => void;
 }
 
@@ -46,6 +52,8 @@ interface UseLocalProjectActionsResult {
 // ---------------------------------------------------------------------------
 
 export function useLocalProjectActions(): UseLocalProjectActionsResult {
+  const queryClient = useQueryClient();
+
   const loadFromRequest = useBeamStore((s) => s.loadFromRequest);
   const buildRequest = useBeamStore((s) => s.buildRequest);
 
@@ -264,6 +272,78 @@ export function useLocalProjectActions(): UseLocalProjectActionsResult {
   );
 
   // -------------------------------------------------------------------------
+  // uploadToServer
+  // -------------------------------------------------------------------------
+
+  const uploadToServer = useCallback(
+    async (
+      key: HandleKey,
+      options: { projectName: string; visibility: "private" | "shared" }
+    ) => {
+      const project = projects.find((p) => p.key === key);
+      if (!project) {
+        setError(`Lokales Projekt nicht gefunden: ${key}`);
+        return;
+      }
+
+      setIsLoading(true);
+      setError(null);
+      try {
+        // 1. Create project on server
+        const newProject = await api.post<{ uuid: string; path: string }>(
+          "/api/projects",
+          {
+            name: options.projectName,
+            description: project.meta.description,
+          }
+        );
+
+        // 2. Upload all positions
+        for (const pos of project.positions) {
+          // Read full position data (includes modules)
+          const fullPos = await readPositionFile(project.handle, pos.relative_path);
+
+          // Determine subfolder (everything before the last "/" segment)
+          const parts = pos.relative_path.split("/");
+          const subfolder = parts.length > 1 ? parts.slice(0, -1).join("/") : "";
+
+          // Create position entry on server
+          await api.post<{ relative_path: string }>(
+            `/api/projects/${newProject.uuid}/positions`,
+            {
+              position_nummer: fullPos.position_nummer,
+              position_name: fullPos.position_name,
+              subfolder,
+              active_module: fullPos.active_module ?? "durchlauftraeger",
+            }
+          );
+
+          // Save full module data into the position
+          await api.put(
+            `/api/projects/${newProject.uuid}/positions/${pos.relative_path}`,
+            {
+              position_nummer: fullPos.position_nummer,
+              position_name: fullPos.position_name,
+              active_module: fullPos.active_module ?? "durchlauftraeger",
+              modules: fullPos.modules,
+            }
+          );
+        }
+
+        // 3. Refresh server projects list
+        await queryClient.invalidateQueries({ queryKey: ["projects"] });
+      } catch (err) {
+        setError(
+          err instanceof Error ? err.message : "Fehler beim Hochladen auf den Server"
+        );
+      } finally {
+        setIsLoading(false);
+      }
+    },
+    [projects, queryClient]
+  );
+
+  // -------------------------------------------------------------------------
 
   const clearError = useCallback(() => setError(null), []);
 
@@ -274,6 +354,7 @@ export function useLocalProjectActions(): UseLocalProjectActionsResult {
     saveLocalPosition,
     createLocalPosition,
     deleteLocalPosition,
+    uploadToServer,
     clearError,
   };
 }

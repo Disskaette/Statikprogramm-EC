@@ -514,7 +514,7 @@ function LocalTab() {
   const addProject = useLocalProjectStore((s) => s.addProject);
   const removeProject = useLocalProjectStore((s) => s.removeProject);
   const requestPermission = useLocalProjectStore((s) => s.requestPermission);
-  const { loadLocalPosition, createLocalPosition, deleteLocalPosition } =
+  const { loadLocalPosition, createLocalPosition, deleteLocalPosition, uploadToServer } =
     useLocalProjectActions();
 
   const [openFolderError, setOpenFolderError] = useState<string | null>(null);
@@ -569,6 +569,7 @@ function LocalTab() {
           onDeletePosition={deleteLocalPosition}
           onRequestPermission={() => requestPermission(project.key)}
           onRemove={() => removeProject(project.key)}
+          onUploadToServer={uploadToServer}
         />
       ))}
     </div>
@@ -589,6 +590,10 @@ interface LocalProjectItemProps {
   onDeletePosition: (key: string, relativePath: string) => Promise<void>;
   onRequestPermission: () => Promise<void>;
   onRemove: () => void;
+  onUploadToServer: (
+    key: string,
+    options: { projectName: string; visibility: "private" | "shared" }
+  ) => Promise<void>;
 }
 
 function LocalProjectItem({
@@ -598,11 +603,18 @@ function LocalProjectItem({
   onDeletePosition,
   onRequestPermission,
   onRemove,
+  onUploadToServer,
 }: LocalProjectItemProps) {
   const [isExpanded, setIsExpanded] = useState(true);
   const [showCreateDialog, setShowCreateDialog] = useState(false);
   const [newNummer, setNewNummer] = useState("");
   const [newName, setNewName] = useState("");
+
+  // Upload dialog state
+  const [showUploadDialog, setShowUploadDialog] = useState(false);
+  const [uploadName, setUploadName] = useState(project.meta.name || project.handle.name);
+  const [uploadVisibility, setUploadVisibility] = useState<"private" | "shared">("private");
+  const [isUploading, setIsUploading] = useState(false);
 
   const currentPositionPath = useProjectStore((s) => s.currentPositionPath);
   const currentLocalProjectKey = useProjectStore((s) => s.currentLocalProjectKey);
@@ -630,6 +642,15 @@ function LocalProjectItem({
           aria-label="Neue lokale Position erstellen"
         >
           ＋
+        </button>
+        {/* "Upload to server" button – hover-revealed */}
+        <button
+          onClick={(e) => { e.stopPropagation(); setShowUploadDialog(true); }}
+          className="shrink-0 opacity-0 group-hover:opacity-100 text-[var(--muted-foreground)] hover:text-[var(--foreground)] transition-opacity px-1"
+          title="Auf Server hochladen"
+          aria-label="Projekt auf Server hochladen"
+        >
+          ☁↑
         </button>
         <button
           onClick={onRemove}
@@ -683,6 +704,57 @@ function LocalProjectItem({
                 setNewNummer("");
                 setNewName("");
               }}
+              className="flex-1 text-xs py-1 rounded border border-[var(--border)] text-[var(--muted-foreground)] hover:text-[var(--foreground)] transition-colors"
+            >
+              Abbrechen
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Upload-to-server dialog */}
+      {showUploadDialog && (
+        <div className="mx-2 my-1 p-2 rounded border border-[var(--border)] bg-[var(--card)] space-y-2">
+          <p className="text-xs font-medium text-[var(--foreground)]">Auf Server hochladen</p>
+          <p className="text-xs text-[var(--muted-foreground)]">
+            Überschreibt eine bestehende Server-Version nicht – erstellt immer ein neues Projekt.
+          </p>
+          <input
+            type="text"
+            value={uploadName}
+            onChange={(e) => setUploadName(e.target.value)}
+            placeholder="Projektname"
+            className="w-full text-xs px-2 py-1 rounded border border-[var(--border)] bg-[var(--background)] text-[var(--foreground)] outline-none focus:ring-1 focus:ring-[var(--primary)]"
+          />
+          <div className="flex gap-2 items-center">
+            <label className="text-xs text-[var(--foreground)]">Sichtbarkeit:</label>
+            <select
+              value={uploadVisibility}
+              onChange={(e) => setUploadVisibility(e.target.value as "private" | "shared")}
+              className="text-xs px-2 py-1 rounded border border-[var(--border)] bg-[var(--background)] text-[var(--foreground)]"
+            >
+              <option value="private">🔒 Privat</option>
+              <option value="shared">👥 Geteilt</option>
+            </select>
+          </div>
+          <div className="flex gap-1">
+            <button
+              disabled={!uploadName.trim() || isUploading}
+              onClick={async () => {
+                setIsUploading(true);
+                await onUploadToServer(project.key, {
+                  projectName: uploadName.trim(),
+                  visibility: uploadVisibility,
+                });
+                setIsUploading(false);
+                setShowUploadDialog(false);
+              }}
+              className="flex-1 text-xs py-1 rounded bg-[var(--primary)] text-[var(--primary-foreground)] hover:opacity-90 disabled:opacity-50 transition-opacity"
+            >
+              {isUploading ? "Lädt hoch…" : "Hochladen"}
+            </button>
+            <button
+              onClick={() => setShowUploadDialog(false)}
               className="flex-1 text-xs py-1 rounded border border-[var(--border)] text-[var(--muted-foreground)] hover:text-[var(--foreground)] transition-colors"
             >
               Abbrechen
