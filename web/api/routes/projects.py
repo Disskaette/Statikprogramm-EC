@@ -41,7 +41,7 @@ import logging
 import re
 import shutil
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
@@ -124,7 +124,7 @@ class CreateFolderRequest(BaseModel):
 
 class VisibilityRequest(BaseModel):
     """Request body for changing a project's visibility."""
-    visibility: str = Field(description="'private' or 'shared'")
+    visibility: Literal["private", "shared"] = Field(description="'private' or 'shared'")
 
 
 # ---------------------------------------------------------------------------
