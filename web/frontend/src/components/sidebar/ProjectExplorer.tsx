@@ -21,8 +21,12 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useProjects, usePositions } from "@/hooks/useProjects";
 import { useProjectActions } from "@/hooks/useProjectActions";
 import { useProjectStore } from "@/stores/useProjectStore";
+import { useLocalProjectStore } from "@/stores/useLocalProjectStore";
+import { useLocalProjectActions } from "@/hooks/useLocalProjectActions";
+import { pickDirectory, isFileSystemAccessSupported } from "@/fs/useLocalFileSystem";
 import { api } from "@/lib/api";
 import type { Project, Position, FolderNode } from "@/types/project";
+import type { LocalProjectEntry } from "@/types/localProject";
 import { ContextMenu, type ContextMenuEntry } from "@/components/ui/ContextMenu";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { InputDialog } from "@/components/ui/InputDialog";
@@ -502,6 +506,160 @@ function FolderGroup({
 }
 
 // =============================================================================
+// Local project tab components
+// =============================================================================
+
+function LocalTab() {
+  const projects = useLocalProjectStore((s) => s.projects);
+  const addProject = useLocalProjectStore((s) => s.addProject);
+  const removeProject = useLocalProjectStore((s) => s.removeProject);
+  const requestPermission = useLocalProjectStore((s) => s.requestPermission);
+  const { loadLocalPosition } = useLocalProjectActions();
+
+  const [openFolderError, setOpenFolderError] = useState<string | null>(null);
+
+  const handleOpenFolder = async () => {
+    setOpenFolderError(null);
+    try {
+      const handle = await pickDirectory();
+      await addProject(handle);
+    } catch (err) {
+      if (err instanceof Error && err.name !== "AbortError") {
+        setOpenFolderError(err.message);
+      }
+      // AbortError = user cancelled picker → ignore silently
+    }
+  };
+
+  if (!isFileSystemAccessSupported()) {
+    return (
+      <div className="p-3 text-xs text-[var(--muted-foreground)]">
+        Lokale Projekte werden in Chrome, Edge und Firefox 111+ unterstützt.
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex flex-col gap-2">
+      {/* Open folder button */}
+      <button
+        onClick={handleOpenFolder}
+        className="flex items-center gap-1.5 text-xs text-[var(--muted-foreground)] hover:text-[var(--foreground)] px-2 py-1 rounded hover:bg-[var(--accent)] transition-colors"
+      >
+        <span>＋</span> Ordner öffnen
+      </button>
+
+      {openFolderError && (
+        <p className="text-xs text-red-500 px-2">{openFolderError}</p>
+      )}
+
+      {projects.length === 0 && (
+        <p className="text-xs text-[var(--muted-foreground)] px-2 py-4 text-center italic">
+          Noch kein lokaler Ordner geöffnet.
+        </p>
+      )}
+
+      {projects.map((project) => (
+        <LocalProjectItem
+          key={project.key}
+          project={project}
+          onLoadPosition={loadLocalPosition}
+          onRequestPermission={() => requestPermission(project.key)}
+          onRemove={() => removeProject(project.key)}
+        />
+      ))}
+    </div>
+  );
+}
+
+interface LocalProjectItemProps {
+  project: LocalProjectEntry;
+  onLoadPosition: (key: string, relativePath: string) => Promise<void>;
+  onRequestPermission: () => Promise<void>;
+  onRemove: () => void;
+}
+
+function LocalProjectItem({
+  project,
+  onLoadPosition,
+  onRequestPermission,
+  onRemove,
+}: LocalProjectItemProps) {
+  const [isExpanded, setIsExpanded] = useState(true);
+  const currentPositionPath = useProjectStore((s) => s.currentPositionPath);
+  const currentLocalProjectKey = useProjectStore((s) => s.currentLocalProjectKey);
+
+  return (
+    <div className="text-xs">
+      {/* Project header row */}
+      <div className="flex items-center gap-1 px-2 py-1 rounded hover:bg-[var(--accent)] group">
+        <button
+          className="flex-1 flex items-center gap-1 text-left font-medium text-[var(--foreground)] min-w-0"
+          onClick={() => setIsExpanded((v) => !v)}
+        >
+          <span className="shrink-0">{isExpanded ? "▾" : "▸"}</span>
+          <span className="shrink-0">📂</span>
+          <span className="truncate">{project.meta.name || project.handle.name}</span>
+        </button>
+        <button
+          onClick={onRemove}
+          className="shrink-0 opacity-0 group-hover:opacity-100 text-[var(--muted-foreground)] hover:text-red-500 transition-opacity px-1"
+          title="Aus Liste entfernen"
+          aria-label="Lokales Projekt entfernen"
+        >
+          ✕
+        </button>
+      </div>
+
+      {/* Permission warning */}
+      {!project.hasPermission && (
+        <div className="mx-2 my-1 p-2 rounded bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800">
+          <p className="text-amber-700 dark:text-amber-400 mb-1 text-xs">
+            ⚠️ Zugriff nötig
+          </p>
+          <button
+            onClick={onRequestPermission}
+            className="text-xs underline text-amber-600 dark:text-amber-400 hover:text-amber-800 dark:hover:text-amber-200"
+          >
+            Ordner wieder erlauben
+          </button>
+        </div>
+      )}
+
+      {/* Positions list */}
+      {isExpanded && project.hasPermission && (
+        <div className="ml-4 space-y-0.5 mt-0.5">
+          {project.positions.length === 0 && (
+            <p className="text-[var(--muted-foreground)] px-2 py-1 italic">
+              Keine Positionen gefunden
+            </p>
+          )}
+          {project.positions.map((pos) => {
+            const isActive =
+              currentLocalProjectKey === project.key &&
+              currentPositionPath === pos.relative_path;
+            return (
+              <button
+                key={pos.relative_path}
+                className={`w-full text-left px-2 py-0.5 rounded transition-colors truncate ${
+                  isActive
+                    ? "bg-[var(--primary)] text-[var(--primary-foreground)]"
+                    : "hover:bg-[var(--accent)] text-[var(--foreground)]"
+                }`}
+                onClick={() => onLoadPosition(project.key, pos.relative_path)}
+                title={`${pos.position_nummer} – ${pos.position_name}`}
+              >
+                📄 {pos.position_nummer} – {pos.position_name}
+              </button>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// =============================================================================
 // Main component: ProjectExplorer
 // =============================================================================
 
@@ -546,6 +704,9 @@ export function ProjectExplorer() {
     deleteFolder,
     clearError,
   } = useProjectActions();
+
+  // ---- Tab state ------------------------------------------------------------
+  const [activeTab, setActiveTab] = useState<"server" | "local">("server");
 
   // ---- UI state -------------------------------------------------------------
   const [showNewProject, setShowNewProject] = useState(false);
@@ -1023,7 +1184,48 @@ export function ProjectExplorer() {
   const hasPositions = positions.length > 0;
 
   return (
-    <div className="flex h-full flex-col">
+    <div className="flex h-full flex-col overflow-hidden">
+      {/* ===================================================================
+          Tab bar: Server / Lokal
+          =================================================================== */}
+      <div className="flex border-b border-[var(--border)] shrink-0">
+        <button
+          onClick={() => setActiveTab("server")}
+          className={`flex-1 py-1.5 text-xs font-medium transition-colors ${
+            activeTab === "server"
+              ? "border-b-2 border-[var(--primary)] text-[var(--primary)]"
+              : "text-[var(--muted-foreground)] hover:text-[var(--foreground)]"
+          }`}
+        >
+          Server
+        </button>
+        <button
+          onClick={() => setActiveTab("local")}
+          className={`flex-1 py-1.5 text-xs font-medium transition-colors ${
+            activeTab === "local"
+              ? "border-b-2 border-[var(--primary)] text-[var(--primary)]"
+              : "text-[var(--muted-foreground)] hover:text-[var(--foreground)]"
+          }`}
+        >
+          Lokal
+        </button>
+      </div>
+
+      {/* ===================================================================
+          Local tab
+          =================================================================== */}
+      {activeTab === "local" && (
+        <div className="flex-1 overflow-y-auto p-2">
+          <LocalTab />
+        </div>
+      )}
+
+      {/* ===================================================================
+          Server tab: existing content (hidden when local tab is active)
+          =================================================================== */}
+      {activeTab === "server" && (
+      <div className="flex flex-col flex-1 overflow-hidden">
+
       {/* ===================================================================
           Top: Project selector
           =================================================================== */}
@@ -1274,6 +1476,9 @@ export function ProjectExplorer() {
         onConfirm={(v) => handleDialogConfirm(v)}
         onCancel={handleDialogCancel}
       />
+
+      </div>
+      )}
     </div>
   );
 }
