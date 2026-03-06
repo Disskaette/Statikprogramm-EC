@@ -179,8 +179,6 @@ function SketchSvg({
   const primaryColor = cssVar("--primary")          || "#6366f1";
   const mutedColor   = cssVar("--muted-foreground") || "#737373";
   const borderColor  = cssVar("--border")           || "#e5e7eb";
-  // Permanent load: foreground at ~55 % opacity via hex alpha
-  const permColor    = `${fgColor}8C`;
 
   // Build per-span x-ranges in metres
   let xAccum = 0;
@@ -191,7 +189,9 @@ function SketchSvg({
     return { x0, x1, span: s };
   });
 
-  // Inner-field spans (not cantilevers) in order
+  // moment_muster from the backend is indexed by inner field order (feld_1=0, feld_2=1, …).
+  // Filtering cantilevers out of spanRanges preserves this exact indexing – do not change
+  // the filter or sort order without updating the backend mapping.
   const innerFields = spanRanges.filter((r) => !r.span.isCantilever);
 
   // Support triangle path
@@ -245,7 +245,7 @@ function SketchSvg({
           {/* ── Permanent load layer (g) – all spans ────────────────────── */}
           <text
             x={4} y={EC_LAYOUT.PERM_LABEL_Y}
-            fontSize={9} fill={permColor}
+            fontSize={9} fill={fgColor} opacity={0.6}
             fontFamily="system-ui, sans-serif"
           >
             g
@@ -254,18 +254,18 @@ function SketchSvg({
             const x0 = toX(r.x0);
             const x1 = toX(r.x1);
             return (
-              <g key={`perm-${idx}`}>
+              <g key={`perm-${idx}`} opacity={0.6}>
                 <line
                   x1={x0} y1={EC_LAYOUT.PERM_BAR_Y}
                   x2={x1} y2={EC_LAYOUT.PERM_BAR_Y}
-                  stroke={permColor} strokeWidth={2}
+                  stroke={fgColor} strokeWidth={2}
                 />
                 {arrowPositions(x0, x1).map((cx, j) => (
                   <Arrow
                     key={j} cx={cx}
                     barY={EC_LAYOUT.PERM_BAR_Y}
                     botY={EC_LAYOUT.PERM_ARROW_BOT}
-                    color={permColor}
+                    color={fgColor}
                   />
                 ))}
               </g>
