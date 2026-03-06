@@ -27,6 +27,7 @@ import { SchnittgroessenSummary } from "./SchnittgroessenSummary";
 import { EC5NachweiseCard } from "./EC5NachweiseCard";
 import { LastkombinationenCard } from "./LastkombinationenCard";
 import { ForceCharts } from "./ForceCharts";
+import { LoadPatternSketch } from "./LoadPatternSketch";
 
 // ---------------------------------------------------------------------------
 // Spinner
@@ -198,6 +199,13 @@ export function ResultsPanel() {
                   <div className="px-4 pt-3 pb-2">
                     <SchnittgroessenSummary
                       schnittgroessen={results.schnittgroessen}
+                    />
+                  </div>
+                  {/* Governing load combination sketch */}
+                  <div className="px-4 pb-2">
+                    <LoadPatternSketch
+                      schnittgroessen={results.schnittgroessen}
+                      lastfallkombinationen={results.lastfallkombinationen}
                     />
                   </div>
                   {/* Force diagrams */}
