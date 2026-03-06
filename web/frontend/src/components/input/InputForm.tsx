@@ -123,6 +123,7 @@ export function InputForm() {
   useEffect(() => {
     if (isFirstRender.current) {
       isFirstRender.current = false;
+      triggerCalculation(); // fire once on mount with current store values
       return;
     }
     // Any form change marks the position as dirty (unsaved changes)
