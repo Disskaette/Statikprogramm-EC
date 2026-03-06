@@ -50,6 +50,7 @@ function StatItem({ label, tex, value, unit }: StatItemProps) {
       <span className="text-xs text-[var(--muted-foreground)]">{label}</span>
       <div className="flex items-baseline gap-1">
         <KatexInline tex={tex} />
+        <span className="text-sm text-[var(--muted-foreground)]">=</span>
         <span className="text-base font-mono font-semibold tabular-nums">
           {value}
         </span>
