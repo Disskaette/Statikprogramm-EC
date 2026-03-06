@@ -23,6 +23,8 @@ export interface Project {
   positions: string[];
   /** Absolute filesystem path of the project directory */
   path: string;
+  /** Visibility: 'private' (default) or 'shared'. Optional for backward compatibility. */
+  visibility?: "private" | "shared";
 }
 
 // ---------------------------------------------------------------------------

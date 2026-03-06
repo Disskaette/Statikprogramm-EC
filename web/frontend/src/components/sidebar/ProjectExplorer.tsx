@@ -21,8 +21,12 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useProjects, usePositions } from "@/hooks/useProjects";
 import { useProjectActions } from "@/hooks/useProjectActions";
 import { useProjectStore } from "@/stores/useProjectStore";
+import { useLocalProjectStore } from "@/stores/useLocalProjectStore";
+import { useLocalProjectActions } from "@/hooks/useLocalProjectActions";
+import { pickDirectory, isFileSystemAccessSupported } from "@/fs/useLocalFileSystem";
 import { api } from "@/lib/api";
 import type { Project, Position, FolderNode } from "@/types/project";
+import type { LocalProjectEntry } from "@/types/localProject";
 import { ContextMenu, type ContextMenuEntry } from "@/components/ui/ContextMenu";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { InputDialog } from "@/components/ui/InputDialog";
@@ -502,6 +506,321 @@ function FolderGroup({
 }
 
 // =============================================================================
+// Local project tab components
+// =============================================================================
+
+function LocalTab() {
+  const projects = useLocalProjectStore((s) => s.projects);
+  const addProject = useLocalProjectStore((s) => s.addProject);
+  const removeProject = useLocalProjectStore((s) => s.removeProject);
+  const requestPermission = useLocalProjectStore((s) => s.requestPermission);
+  const { loadLocalPosition, createLocalPosition, deleteLocalPosition, uploadToServer } =
+    useLocalProjectActions();
+
+  const [openFolderError, setOpenFolderError] = useState<string | null>(null);
+
+  const handleOpenFolder = async () => {
+    setOpenFolderError(null);
+    try {
+      const handle = await pickDirectory();
+      await addProject(handle);
+    } catch (err) {
+      if (err instanceof Error && err.name !== "AbortError") {
+        setOpenFolderError(err.message);
+      }
+      // AbortError = user cancelled picker → ignore silently
+    }
+  };
+
+  if (!isFileSystemAccessSupported()) {
+    return (
+      <div className="p-3 text-xs text-[var(--muted-foreground)]">
+        Lokale Projekte werden in Chrome, Edge und Firefox 111+ unterstützt.
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex flex-col gap-2">
+      {/* Open folder button */}
+      <button
+        onClick={handleOpenFolder}
+        className="flex items-center gap-1.5 text-xs text-[var(--muted-foreground)] hover:text-[var(--foreground)] px-2 py-1 rounded hover:bg-[var(--accent)] transition-colors"
+      >
+        <span>＋</span> Ordner öffnen
+      </button>
+
+      {openFolderError && (
+        <p className="text-xs text-red-500 px-2">{openFolderError}</p>
+      )}
+
+      {projects.length === 0 && (
+        <p className="text-xs text-[var(--muted-foreground)] px-2 py-4 text-center italic">
+          Noch kein lokaler Ordner geöffnet.
+        </p>
+      )}
+
+      {projects.map((project) => (
+        <LocalProjectItem
+          key={project.key}
+          project={project}
+          onLoadPosition={loadLocalPosition}
+          onCreatePosition={createLocalPosition}
+          onDeletePosition={deleteLocalPosition}
+          onRequestPermission={() => requestPermission(project.key)}
+          onRemove={() => removeProject(project.key)}
+          onUploadToServer={uploadToServer}
+        />
+      ))}
+    </div>
+  );
+}
+
+interface LocalProjectItemProps {
+  project: LocalProjectEntry;
+  onLoadPosition: (key: string, relativePath: string) => Promise<void>;
+  onCreatePosition: (
+    key: string,
+    options: {
+      position_nummer: string;
+      position_name: string;
+      subfolder?: string;
+    }
+  ) => Promise<void>;
+  onDeletePosition: (key: string, relativePath: string) => Promise<void>;
+  onRequestPermission: () => Promise<void>;
+  onRemove: () => void;
+  onUploadToServer: (
+    key: string,
+    options: { projectName: string; visibility: "private" | "shared" }
+  ) => Promise<void>;
+}
+
+function LocalProjectItem({
+  project,
+  onLoadPosition,
+  onCreatePosition,
+  onDeletePosition,
+  onRequestPermission,
+  onRemove,
+  onUploadToServer,
+}: LocalProjectItemProps) {
+  const [isExpanded, setIsExpanded] = useState(true);
+  const [showCreateDialog, setShowCreateDialog] = useState(false);
+  const [newNummer, setNewNummer] = useState("");
+  const [newName, setNewName] = useState("");
+
+  // Upload dialog state
+  const [showUploadDialog, setShowUploadDialog] = useState(false);
+  const [uploadName, setUploadName] = useState(project.meta.name || project.handle.name);
+  const [uploadVisibility, setUploadVisibility] = useState<"private" | "shared">("private");
+  const [isUploading, setIsUploading] = useState(false);
+
+  const currentPositionPath = useProjectStore((s) => s.currentPositionPath);
+  const currentLocalProjectKey = useProjectStore((s) => s.currentLocalProjectKey);
+
+  return (
+    <div className="text-xs">
+      {/* Project header row */}
+      <div className="flex items-center gap-1 px-2 py-1 rounded hover:bg-[var(--accent)] group">
+        <button
+          className="flex-1 flex items-center gap-1 text-left font-medium text-[var(--foreground)] min-w-0"
+          onClick={() => setIsExpanded((v) => !v)}
+        >
+          <span className="shrink-0">{isExpanded ? "▾" : "▸"}</span>
+          <span className="shrink-0">📂</span>
+          <span className="truncate">{project.meta.name || project.handle.name}</span>
+        </button>
+        {/* "New position" button – hover-revealed */}
+        <button
+          onClick={(e) => {
+            e.stopPropagation();
+            setShowCreateDialog(true);
+          }}
+          className="shrink-0 opacity-0 group-hover:opacity-100 text-[var(--muted-foreground)] hover:text-[var(--foreground)] transition-opacity px-1"
+          title="Neue Position"
+          aria-label="Neue lokale Position erstellen"
+        >
+          ＋
+        </button>
+        {/* "Upload to server" button – hover-revealed */}
+        <button
+          onClick={(e) => { e.stopPropagation(); setShowUploadDialog(true); }}
+          className="shrink-0 opacity-0 group-hover:opacity-100 text-[var(--muted-foreground)] hover:text-[var(--foreground)] transition-opacity px-1"
+          title="Auf Server hochladen"
+          aria-label="Projekt auf Server hochladen"
+        >
+          ☁↑
+        </button>
+        <button
+          onClick={onRemove}
+          className="shrink-0 opacity-0 group-hover:opacity-100 text-[var(--muted-foreground)] hover:text-red-500 transition-opacity px-1"
+          title="Aus Liste entfernen"
+          aria-label="Lokales Projekt entfernen"
+        >
+          ✕
+        </button>
+      </div>
+
+      {/* Inline create-position dialog */}
+      {showCreateDialog && (
+        <div className="mx-2 my-1 p-2 rounded border border-[var(--border)] bg-[var(--card)] space-y-2">
+          <p className="text-xs font-medium text-[var(--foreground)]">Neue Position</p>
+          <input
+            type="text"
+            placeholder="Nummer (z.B. 1.01)"
+            value={newNummer}
+            onChange={(e) => setNewNummer(e.target.value)}
+            className="w-full text-xs px-2 py-1 rounded border border-[var(--border)] bg-[var(--background)] text-[var(--foreground)] outline-none focus:ring-1 focus:ring-[var(--primary)]"
+            autoFocus
+          />
+          <input
+            type="text"
+            placeholder="Name (z.B. Wohnzimmerdecke)"
+            value={newName}
+            onChange={(e) => setNewName(e.target.value)}
+            className="w-full text-xs px-2 py-1 rounded border border-[var(--border)] bg-[var(--background)] text-[var(--foreground)] outline-none focus:ring-1 focus:ring-[var(--primary)]"
+          />
+          <div className="flex gap-1">
+            <button
+              onClick={async () => {
+                if (!newNummer.trim() || !newName.trim()) return;
+                await onCreatePosition(project.key, {
+                  position_nummer: newNummer.trim(),
+                  position_name: newName.trim(),
+                });
+                setShowCreateDialog(false);
+                setNewNummer("");
+                setNewName("");
+              }}
+              disabled={!newNummer.trim() || !newName.trim()}
+              className="flex-1 text-xs py-1 rounded bg-[var(--primary)] text-[var(--primary-foreground)] hover:opacity-90 disabled:opacity-40 transition-opacity"
+            >
+              Erstellen
+            </button>
+            <button
+              onClick={() => {
+                setShowCreateDialog(false);
+                setNewNummer("");
+                setNewName("");
+              }}
+              className="flex-1 text-xs py-1 rounded border border-[var(--border)] text-[var(--muted-foreground)] hover:text-[var(--foreground)] transition-colors"
+            >
+              Abbrechen
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Upload-to-server dialog */}
+      {showUploadDialog && (
+        <div className="mx-2 my-1 p-2 rounded border border-[var(--border)] bg-[var(--card)] space-y-2">
+          <p className="text-xs font-medium text-[var(--foreground)]">Auf Server hochladen</p>
+          <p className="text-xs text-[var(--muted-foreground)]">
+            Überschreibt eine bestehende Server-Version nicht – erstellt immer ein neues Projekt.
+          </p>
+          <input
+            type="text"
+            value={uploadName}
+            onChange={(e) => setUploadName(e.target.value)}
+            placeholder="Projektname"
+            className="w-full text-xs px-2 py-1 rounded border border-[var(--border)] bg-[var(--background)] text-[var(--foreground)] outline-none focus:ring-1 focus:ring-[var(--primary)]"
+          />
+          <div className="flex gap-2 items-center">
+            <label className="text-xs text-[var(--foreground)]">Sichtbarkeit:</label>
+            <select
+              value={uploadVisibility}
+              onChange={(e) => setUploadVisibility(e.target.value as "private" | "shared")}
+              className="text-xs px-2 py-1 rounded border border-[var(--border)] bg-[var(--background)] text-[var(--foreground)]"
+            >
+              <option value="private">🔒 Privat</option>
+              <option value="shared">👥 Geteilt</option>
+            </select>
+          </div>
+          <div className="flex gap-1">
+            <button
+              disabled={!uploadName.trim() || isUploading}
+              onClick={async () => {
+                setIsUploading(true);
+                await onUploadToServer(project.key, {
+                  projectName: uploadName.trim(),
+                  visibility: uploadVisibility,
+                });
+                setIsUploading(false);
+                setShowUploadDialog(false);
+              }}
+              className="flex-1 text-xs py-1 rounded bg-[var(--primary)] text-[var(--primary-foreground)] hover:opacity-90 disabled:opacity-50 transition-opacity"
+            >
+              {isUploading ? "Lädt hoch…" : "Hochladen"}
+            </button>
+            <button
+              onClick={() => setShowUploadDialog(false)}
+              className="flex-1 text-xs py-1 rounded border border-[var(--border)] text-[var(--muted-foreground)] hover:text-[var(--foreground)] transition-colors"
+            >
+              Abbrechen
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Permission warning */}
+      {!project.hasPermission && (
+        <div className="mx-2 my-1 p-2 rounded bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800">
+          <p className="text-amber-700 dark:text-amber-400 mb-1 text-xs">
+            ⚠️ Zugriff nötig
+          </p>
+          <button
+            onClick={onRequestPermission}
+            className="text-xs underline text-amber-600 dark:text-amber-400 hover:text-amber-800 dark:hover:text-amber-200"
+          >
+            Ordner wieder erlauben
+          </button>
+        </div>
+      )}
+
+      {/* Positions list */}
+      {isExpanded && project.hasPermission && (
+        <div className="ml-4 space-y-0.5 mt-0.5">
+          {project.positions.length === 0 && (
+            <p className="text-[var(--muted-foreground)] px-2 py-1 italic">
+              Keine Positionen gefunden
+            </p>
+          )}
+          {project.positions.map((pos) => {
+            const isActive =
+              currentLocalProjectKey === project.key &&
+              currentPositionPath === pos.relative_path;
+            return (
+              <div key={pos.relative_path} className="flex items-center group/pos">
+                <button
+                  className={`flex-1 text-left px-2 py-0.5 rounded transition-colors truncate ${
+                    isActive
+                      ? "bg-[var(--primary)] text-[var(--primary-foreground)]"
+                      : "hover:bg-[var(--accent)] text-[var(--foreground)]"
+                  }`}
+                  onClick={() => onLoadPosition(project.key, pos.relative_path)}
+                  title={`${pos.position_nummer} – ${pos.position_name}`}
+                >
+                  📄 {pos.position_nummer} – {pos.position_name}
+                </button>
+                <button
+                  onClick={() => onDeletePosition(project.key, pos.relative_path)}
+                  className="shrink-0 opacity-0 group-hover/pos:opacity-100 text-[var(--muted-foreground)] hover:text-red-500 transition-opacity px-1"
+                  title="Position löschen"
+                  aria-label={`Position ${pos.position_nummer} löschen`}
+                >
+                  ✕
+                </button>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// =============================================================================
 // Main component: ProjectExplorer
 // =============================================================================
 
@@ -546,6 +865,12 @@ export function ProjectExplorer() {
     deleteFolder,
     clearError,
   } = useProjectActions();
+
+  // ---- Local project actions (for server → local download) -----------------
+  const { downloadToLocal } = useLocalProjectActions();
+
+  // ---- Tab state ------------------------------------------------------------
+  const [activeTab, setActiveTab] = useState<"server" | "local">("server");
 
   // ---- UI state -------------------------------------------------------------
   const [showNewProject, setShowNewProject] = useState(false);
@@ -1023,7 +1348,48 @@ export function ProjectExplorer() {
   const hasPositions = positions.length > 0;
 
   return (
-    <div className="flex h-full flex-col">
+    <div className="flex h-full flex-col overflow-hidden">
+      {/* ===================================================================
+          Tab bar: Server / Lokal
+          =================================================================== */}
+      <div className="flex border-b border-[var(--border)] shrink-0">
+        <button
+          onClick={() => setActiveTab("server")}
+          className={`flex-1 py-1.5 text-xs font-medium transition-colors ${
+            activeTab === "server"
+              ? "border-b-2 border-[var(--primary)] text-[var(--primary)]"
+              : "text-[var(--muted-foreground)] hover:text-[var(--foreground)]"
+          }`}
+        >
+          Server
+        </button>
+        <button
+          onClick={() => setActiveTab("local")}
+          className={`flex-1 py-1.5 text-xs font-medium transition-colors ${
+            activeTab === "local"
+              ? "border-b-2 border-[var(--primary)] text-[var(--primary)]"
+              : "text-[var(--muted-foreground)] hover:text-[var(--foreground)]"
+          }`}
+        >
+          Lokal
+        </button>
+      </div>
+
+      {/* ===================================================================
+          Local tab
+          =================================================================== */}
+      {activeTab === "local" && (
+        <div className="flex-1 overflow-y-auto p-2">
+          <LocalTab />
+        </div>
+      )}
+
+      {/* ===================================================================
+          Server tab: existing content (hidden when local tab is active)
+          =================================================================== */}
+      {activeTab === "server" && (
+      <div className="flex flex-col flex-1 overflow-hidden">
+
       {/* ===================================================================
           Top: Project selector
           =================================================================== */}
@@ -1069,6 +1435,36 @@ export function ProjectExplorer() {
                 +
               </button>
             </div>
+
+            {/* Visibility badge + download-to-local button for selected project */}
+            {currentProjectId && (() => {
+              const selectedProject = projects?.find((p) => p.uuid === currentProjectId);
+              if (!selectedProject) return null;
+              return (
+                <div className="flex items-center gap-1.5 mt-1 px-1">
+                  <span
+                    className="text-xs text-[var(--muted-foreground)]"
+                    title={selectedProject.visibility === "shared" ? "Öffentlich" : "Privat"}
+                  >
+                    {selectedProject.visibility === "shared" ? "👥" : "🔒"}
+                  </span>
+                  <span className="text-[10px] text-[var(--muted-foreground)] flex-1 truncate">
+                    {selectedProject.visibility === "shared" ? "Geteilt" : "Privat"}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      downloadToLocal(selectedProject.uuid, selectedProject.name)
+                    }
+                    className="shrink-0 rounded border border-[var(--border)] px-1.5 py-0.5 text-xs text-[var(--muted-foreground)] hover:text-[var(--foreground)] hover:bg-[var(--accent)] transition-colors"
+                    title="Lokal speichern"
+                    aria-label={`Projekt ${selectedProject.name} lokal speichern`}
+                  >
+                    &#x2601;&#x2193;
+                  </button>
+                </div>
+              );
+            })()}
 
             {showNewProject && (
               <InlineInput
@@ -1274,6 +1670,9 @@ export function ProjectExplorer() {
         onConfirm={(v) => handleDialogConfirm(v)}
         onCancel={handleDialogCancel}
       />
+
+      </div>
+      )}
     </div>
   );
 }
