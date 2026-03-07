@@ -141,10 +141,33 @@ class FeebbBerechnungEC:
         self.zwischenlager_knoten = []
         node_tracker = 0
 
+        # Adaptive element density based on number of inner fields.
+        # Euler-Bernoulli FEM yields exact nodal displacements for UDL loads
+        # regardless of element count; reducing density only affects the visual
+        # smoothness of the interpolated diagram curves.
+        # For EC mode the number of load patterns scales as 2^n_felder – 1, so
+        # the postprocessing cost grows exponentially with field count. Fewer
+        # elements reduce both stiffness-matrix assembly and Hermite-interpolation
+        # work proportionally.
+        n_felder = sum(1 for k in self.spannweiten if k.startswith("feld_"))
+        if n_felder <= 2:
+            elemente_pro_meter = 10   # ≤ 2 fields: fine resolution
+        elif n_felder <= 4:
+            elemente_pro_meter = 8    # 3–4 fields
+        elif n_felder <= 6:
+            elemente_pro_meter = 6    # 5–6 fields
+        else:
+            elemente_pro_meter = 5    # 7+ fields: still smooth on screen
+        self._elemente_pro_meter = elemente_pro_meter   # stored for logging
+        logger.debug(
+            f"🔧 Adaptive Diskretisierung: {n_felder} Felder → "
+            f"{elemente_pro_meter} Elemente/m"
+        )
+
         # === Kragarm links ===
         l_krag_links = float(self.spannweiten.get("kragarm_links", 0))
         if l_krag_links > 0:
-            n_elemente = int(round(l_krag_links * 20))  # 20 Elemente pro Meter
+            n_elemente = max(1, int(round(l_krag_links * elemente_pro_meter)))
             self.felder.append({
                 "typ": "kragarm_links",
                 "laenge": l_krag_links,
@@ -174,7 +197,7 @@ class FeebbBerechnungEC:
         ]
 
         for idx, (feld_key, feld_laenge) in enumerate(normale_felder):
-            n_elemente = int(round(feld_laenge * 20))
+            n_elemente = max(1, int(round(feld_laenge * elemente_pro_meter)))
             self.felder.append({
                 "typ": feld_key,
                 "laenge": feld_laenge,
@@ -204,7 +227,7 @@ class FeebbBerechnungEC:
         ende_normale_felder = node_tracker
         l_krag_rechts = float(self.spannweiten.get("kragarm_rechts", 0))
         if l_krag_rechts > 0:
-            n_elemente = int(round(l_krag_rechts * 20))
+            n_elemente = max(1, int(round(l_krag_rechts * elemente_pro_meter)))
             self.felder.append({
                 "typ": "kragarm_rechts",
                 "laenge": l_krag_rechts,
@@ -688,7 +711,7 @@ class FeebbBerechnungEC:
                                   absolute maximum of each quantity; required by
                                   _erstelle_detaillierte_kombinationsergebnisse.
         """
-        post = Postprocessor(beam, 50)  # 50 evaluation points per element
+        post = Postprocessor(beam, 20)  # 20 evaluation points per element (reduced for performance)
         moment       = post.interp("moment")
         querkraft    = post.interp("shear")
         durchbiegung = post.interp("displacement")
@@ -724,7 +747,7 @@ class FeebbBerechnungEC:
             # FEEBB-Objekte erstellen
             elements = [Element(e) for e in feebb_dict["elements"]]
             beam = Beam(elements, feebb_dict["supports"])
-            post = Postprocessor(beam, 50)  # 50 Auswertungspunkte pro Element
+            post = Postprocessor(beam, 20)  # 20 Auswertungspunkte pro Element (reduziert für Performance)
 
             # Schnittgrößen berechnen
             moment = post.interp("moment")
