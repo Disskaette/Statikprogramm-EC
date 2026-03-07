@@ -680,13 +680,29 @@ class FeebbBerechnungEC:
             beam: Beam instance with .displacement already set externally.
 
         Returns:
-            dict: {"moment": list, "querkraft": list, "durchbiegung": list}
+            dict with keys:
+                "moment"       – list of bending moments at evaluation points
+                "querkraft"    – list of shear forces
+                "durchbiegung" – list of deflections
+                "max"          – {"moment": float, "querkraft": float, "durchbiegung": float}
+                                  absolute maximum of each quantity; required by
+                                  _erstelle_detaillierte_kombinationsergebnisse.
         """
         post = Postprocessor(beam, 50)  # 50 evaluation points per element
+        moment       = post.interp("moment")
+        querkraft    = post.interp("shear")
+        durchbiegung = post.interp("displacement")
         return {
-            "moment":       post.interp("moment"),
-            "querkraft":    post.interp("shear"),
-            "durchbiegung": post.interp("displacement"),
+            "moment":       moment,
+            "querkraft":    querkraft,
+            "durchbiegung": durchbiegung,
+            # Absolute maxima – identical computation to _fuehre_feebb_berechnung_durch.
+            # Required downstream by _erstelle_detaillierte_kombinationsergebnisse.
+            "max": {
+                "moment":       max(abs(m) for m in moment),
+                "querkraft":    max(abs(v) for v in querkraft),
+                "durchbiegung": max(abs(w) for w in durchbiegung),
+            },
         }
 
     def _fuehre_feebb_berechnung_durch(self, feebb_dict):
