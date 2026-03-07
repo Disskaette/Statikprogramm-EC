@@ -125,7 +125,7 @@ export function SchnittgroessenSummary({ schnittgroessen }: Props) {
         <div className="h-8 w-px bg-[var(--border)]" aria-hidden="true" />
         <StatItem
           label="Durchbiegung (GZG)"
-          tex="\delta_{max}"
+          tex="w_{max}"
           value={deflMm}
           unit="mm"
         />
