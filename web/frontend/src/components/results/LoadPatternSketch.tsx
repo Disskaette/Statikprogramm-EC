@@ -69,6 +69,19 @@ const EC_LAYOUT = {
   SVG_H: 122,
 } as const;
 
+// EC mode without variable loads: top q/s/w block omitted, everything shifts up ~29px
+const EC_LAYOUT_PERM_ONLY = {
+  PERM_LABEL_Y: 9,
+  PERM_BAR_Y:   15,
+  PERM_ARROW_BOT: 15 + ARROW_SHAFT_LEN,  // = 29
+  BEAM_Y:        35,
+  SUPPORT_H:     12,
+  FIELD_LABEL_Y: 61,
+  DIM_LINE_Y:    74,
+  DIM_TEXT_Y:    85,
+  SVG_H:         93,
+} as const;
+
 // Quick mode: single combined load layer
 const QK_LAYOUT = {
   LOAD_LABEL_Y: 9,
@@ -151,6 +164,8 @@ interface SketchSvgProps {
   /** Boolean array indexed by inner field index (feld_1=0, feld_2=1, …).
    *  EC mode only. Cantilevers are not included in this array. */
   muster: boolean[];
+  /** True when at least one variable load (Q/S/W) is configured. */
+  hasVariableLoad: boolean;
 }
 
 function SketchSvg({
@@ -159,6 +174,7 @@ function SketchSvg({
   kragarmRechts,
   isEcMode,
   muster,
+  hasVariableLoad,
 }: SketchSvgProps) {
   const total = totalLength(spans);
   if (total <= 0 || spans.length === 0) return null;
@@ -166,13 +182,15 @@ function SketchSvg({
   const toX = (xM: number) => (xM / total) * W;
   const supports = supportPositions(spans, kragarmLinks, kragarmRechts);
 
-  // Pick layout constants
-  const beamY       = isEcMode ? EC_LAYOUT.BEAM_Y       : QK_LAYOUT.BEAM_Y;
-  const supportH    = isEcMode ? EC_LAYOUT.SUPPORT_H    : QK_LAYOUT.SUPPORT_H;
-  const fieldLabelY = isEcMode ? EC_LAYOUT.FIELD_LABEL_Y: QK_LAYOUT.FIELD_LABEL_Y;
-  const dimLineY    = isEcMode ? EC_LAYOUT.DIM_LINE_Y   : QK_LAYOUT.DIM_LINE_Y;
-  const dimTextY    = isEcMode ? EC_LAYOUT.DIM_TEXT_Y   : QK_LAYOUT.DIM_TEXT_Y;
-  const svgH        = isEcMode ? EC_LAYOUT.SVG_H        : QK_LAYOUT.SVG_H;
+  // Select EC layout variant based on whether variable loads are present
+  const ecLayout = isEcMode && hasVariableLoad ? EC_LAYOUT : EC_LAYOUT_PERM_ONLY;
+
+  const beamY       = isEcMode ? ecLayout.BEAM_Y        : QK_LAYOUT.BEAM_Y;
+  const supportH    = isEcMode ? ecLayout.SUPPORT_H     : QK_LAYOUT.SUPPORT_H;
+  const fieldLabelY = isEcMode ? ecLayout.FIELD_LABEL_Y : QK_LAYOUT.FIELD_LABEL_Y;
+  const dimLineY    = isEcMode ? ecLayout.DIM_LINE_Y    : QK_LAYOUT.DIM_LINE_Y;
+  const dimTextY    = isEcMode ? ecLayout.DIM_TEXT_Y    : QK_LAYOUT.DIM_TEXT_Y;
+  const svgH        = isEcMode ? ecLayout.SVG_H         : QK_LAYOUT.SVG_H;
 
   // Colors
   const fgColor      = cssVar("--foreground")      || "#0a0a0a";
@@ -211,40 +229,44 @@ function SketchSvg({
     >
       {isEcMode ? (
         <>
-          {/* ── Variable load layer (q / s / w) ─────────────────────────── */}
-          <text
-            x={4} y={EC_LAYOUT.VAR_LABEL_Y}
-            fontSize={9} fill={primaryColor}
-            fontFamily="system-ui, sans-serif"
-          >
-            q / s / w
-          </text>
-          {innerFields.map((r, idx) => {
-            if (!muster[idx]) return null;
-            const x0 = toX(r.x0);
-            const x1 = toX(r.x1);
-            return (
-              <g key={`var-${idx}`}>
-                <line
-                  x1={x0} y1={EC_LAYOUT.VAR_BAR_Y}
-                  x2={x1} y2={EC_LAYOUT.VAR_BAR_Y}
-                  stroke={primaryColor} strokeWidth={2}
-                />
-                {arrowPositions(x0, x1).map((cx, j) => (
-                  <Arrow
-                    key={j} cx={cx}
-                    barY={EC_LAYOUT.VAR_BAR_Y}
-                    botY={EC_LAYOUT.VAR_ARROW_BOT}
-                    color={primaryColor}
-                  />
-                ))}
-              </g>
-            );
-          })}
+          {/* ── Variable load layer (q / s / w) – only when variable loads exist ── */}
+          {hasVariableLoad && (
+            <>
+              <text
+                x={4} y={EC_LAYOUT.VAR_LABEL_Y}
+                fontSize={9} fill={primaryColor}
+                fontFamily="system-ui, sans-serif"
+              >
+                q / s / w
+              </text>
+              {innerFields.map((r, idx) => {
+                if (!muster[idx]) return null;
+                const x0 = toX(r.x0);
+                const x1 = toX(r.x1);
+                return (
+                  <g key={`var-${idx}`}>
+                    <line
+                      x1={x0} y1={EC_LAYOUT.VAR_BAR_Y}
+                      x2={x1} y2={EC_LAYOUT.VAR_BAR_Y}
+                      stroke={primaryColor} strokeWidth={2}
+                    />
+                    {arrowPositions(x0, x1).map((cx, j) => (
+                      <Arrow
+                        key={j} cx={cx}
+                        barY={EC_LAYOUT.VAR_BAR_Y}
+                        botY={EC_LAYOUT.VAR_ARROW_BOT}
+                        color={primaryColor}
+                      />
+                    ))}
+                  </g>
+                );
+              })}
+            </>
+          )}
 
           {/* ── Permanent load layer (g) – all spans ────────────────────── */}
           <text
-            x={4} y={EC_LAYOUT.PERM_LABEL_Y}
+            x={4} y={ecLayout.PERM_LABEL_Y}
             fontSize={9} fill={fgColor} opacity={0.6}
             fontFamily="system-ui, sans-serif"
           >
@@ -256,15 +278,15 @@ function SketchSvg({
             return (
               <g key={`perm-${idx}`} opacity={0.6}>
                 <line
-                  x1={x0} y1={EC_LAYOUT.PERM_BAR_Y}
-                  x2={x1} y2={EC_LAYOUT.PERM_BAR_Y}
+                  x1={x0} y1={ecLayout.PERM_BAR_Y}
+                  x2={x1} y2={ecLayout.PERM_BAR_Y}
                   stroke={fgColor} strokeWidth={2}
                 />
                 {arrowPositions(x0, x1).map((cx, j) => (
                   <Arrow
                     key={j} cx={cx}
-                    barY={EC_LAYOUT.PERM_BAR_Y}
-                    botY={EC_LAYOUT.PERM_ARROW_BOT}
+                    barY={ecLayout.PERM_BAR_Y}
+                    botY={ecLayout.PERM_ARROW_BOT}
                     color={fgColor}
                   />
                 ))}
@@ -435,6 +457,8 @@ export function LoadPatternSketch({
   const kragarmLinks  = useBeamStore((s) => s.kragarmLinks);
   const kragarmRechts = useBeamStore((s) => s.kragarmRechts);
   const ecModus       = useBeamStore((s) => s.ecModus);
+  const lasten        = useBeamStore((s) => s.lasten);
+  const hasVariableLoad = lasten.some((l) => l.lastfall !== "g");
 
   const isEcMode = ecModus === true;
 
@@ -471,6 +495,7 @@ export function LoadPatternSketch({
         kragarmRechts={kragarmRechts}
         isEcMode={isEcMode}
         muster={muster}
+        hasVariableLoad={hasVariableLoad}
       />
       <ComboLabel
         isEcMode={isEcMode}
