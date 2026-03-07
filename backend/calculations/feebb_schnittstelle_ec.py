@@ -643,7 +643,7 @@ class FeebbBerechnungEC:
             # FEEBB-Objekte erstellen
             elements = [Element(e) for e in feebb_dict["elements"]]
             beam = Beam(elements, feebb_dict["supports"])
-            post = Postprocessor(beam, 50)  # 100 Auswertungspunkte
+            post = Postprocessor(beam, 50)  # 50 Auswertungspunkte pro Element
 
             # Schnittgrößen berechnen
             moment = post.interp("moment")
