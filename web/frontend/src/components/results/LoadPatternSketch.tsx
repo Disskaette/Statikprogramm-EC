@@ -485,24 +485,63 @@ export function LoadPatternSketch({
   const kombiLatex: string    = governingEntry?.latex ?? "";
   const kombiEd: number | null = governingEntry?.Ed ?? governingEntry?.wert ?? null;
 
+  // GZG deflection pattern (EC mode only – in quick mode GZG is an array, not an object)
+  const gzgObj = isEcMode
+    ? ((schnittgroessen as Record<string, unknown> | undefined)
+        ?.GZG as { max?: { durchbiegung_muster?: boolean[]; durchbiegung_kombi?: string } } | undefined)
+    : undefined;
+  const deflMuster: boolean[] = gzgObj?.max?.durchbiegung_muster ?? [];
+  const deflKombi: string     = gzgObj?.max?.durchbiegung_kombi  ?? "";
+
   if (totalLength(spans) <= 0) return null;
 
   return (
-    <div className="space-y-1">
-      <SketchSvg
-        spans={spans}
-        kragarmLinks={kragarmLinks}
-        kragarmRechts={kragarmRechts}
-        isEcMode={isEcMode}
-        muster={muster}
-        hasVariableLoad={hasVariableLoad}
-      />
-      <ComboLabel
-        isEcMode={isEcMode}
-        kombiName={kombiName}
-        kombiLatex={kombiLatex}
-        kombiEd={kombiEd}
-      />
+    <div className="space-y-3">
+      {/* ── GZT block: governing combination for M_Ed and V_Ed ── */}
+      <div className="space-y-1">
+        {isEcMode && (
+          <p className="text-xs font-medium text-[var(--muted-foreground)] uppercase tracking-wide px-1">
+            GZT – M<sub>Ed</sub>, V<sub>Ed</sub>
+          </p>
+        )}
+        <SketchSvg
+          spans={spans}
+          kragarmLinks={kragarmLinks}
+          kragarmRechts={kragarmRechts}
+          isEcMode={isEcMode}
+          muster={muster}
+          hasVariableLoad={hasVariableLoad}
+        />
+        <ComboLabel
+          isEcMode={isEcMode}
+          kombiName={kombiName}
+          kombiLatex={kombiLatex}
+          kombiEd={kombiEd}
+        />
+      </div>
+
+      {/* ── GZG block: governing combination for w_max (EC mode only) ── */}
+      {isEcMode && (deflMuster.length > 0 || deflKombi) && (
+        <div className="space-y-1">
+          <p className="text-xs font-medium text-[var(--muted-foreground)] uppercase tracking-wide px-1">
+            GZG – w<sub>max</sub>
+          </p>
+          <SketchSvg
+            spans={spans}
+            kragarmLinks={kragarmLinks}
+            kragarmRechts={kragarmRechts}
+            isEcMode={isEcMode}
+            muster={deflMuster}
+            hasVariableLoad={hasVariableLoad}
+          />
+          <ComboLabel
+            isEcMode={isEcMode}
+            kombiName={deflKombi}
+            kombiLatex=""
+            kombiEd={null}
+          />
+        </div>
+      )}
     </div>
   );
 }
