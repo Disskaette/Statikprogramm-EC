@@ -1398,14 +1398,14 @@ class FeebbBerechnungEC:
 
 
 # Hilfsfunktion für Kompatibilität mit bestehender Schnittstelle
-def berechne_feebb_gzt_gzg_ec(snapshot, db, num_points=100):
+def berechne_feebb_gzt_gzg_ec(snapshot, db):
     """
     EC-konforme FEEBB-Berechnung - Kompatibilitätsfunktion.
 
     Args:
         snapshot (dict): System-Snapshot mit allen Eingabedaten
         db: Datenbankverbindung für Materialparameter
-        num_points (int): Anzahl Auswertungspunkte (wird ignoriert, fest auf 100 gesetzt)
+        (num_points wurde entfernt – die Auswertungspunkte sind intern fest auf 50 gesetzt)
 
     Returns:
         dict: Berechnungsergebnisse im Format der bestehenden Schnittstelle
