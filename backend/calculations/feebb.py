@@ -298,12 +298,14 @@ class Beam():
         for i, element in enumerate(elements):
             a = i * 2
             b = a + 4
-            stiffness_element = np.zeros_like(self.stiffness)
-            stiffness_element[a:b, a:b] = element.stiffness
-            self.stiffness = self.stiffness + stiffness_element
-            load_element = np.zeros_like(self.load)
-            load_element[a:b] = element.nodal_loads
-            self.load = self.load - load_element
+            # Direct in-place block update: O(16) per element instead of O(n_dof²).
+            # The previous np.zeros_like approach allocated a full n_dof×n_dof
+            # zero matrix for every element, causing O(n_elements × n_dof²) total
+            # memory work – catastrophically slow for many-element beams in batch mode.
+            # Result is numerically identical: same values assembled into the same
+            # positions of K and F.
+            self.stiffness[a:b, a:b] += element.stiffness
+            self.load[a:b] -= element.nodal_loads
 
         for i in range(self.num_dof):
             if self.supports[i] < 0:
