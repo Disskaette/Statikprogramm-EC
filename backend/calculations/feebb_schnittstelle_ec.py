@@ -249,18 +249,20 @@ class FeebbBerechnungEC:
     def _generiere_belastungsmuster(self):
         """
         Generiert alle relevanten Belastungsmuster für Mehrfeldträger nach Eurocode.
-        
+
         Für jeden Feldtyp (normale Felder, keine Kragarme) werden verschiedene
         Belastungsmuster erzeugt, um die ungünstigste Konstellation zu finden.
         """
         # Normale Felder (ohne Kragarme) extrahieren
-        self.normale_felder = [f for f in self.felder if f["typ"].startswith("feld_")]
-        
+        self.normale_felder = [
+            f for f in self.felder if f["typ"].startswith("feld_")]
+
         # Debug-Logging
         logger.info(f"🔍 Normale Felder: {len(self.normale_felder)}")
         for fidx, feld in enumerate(self.normale_felder):
-            logger.info(f"   Feld {fidx}: {feld['typ']}, Elemente {feld['start_element']}-{feld['start_element'] + feld['anzahl_elemente'] - 1}, Länge {feld['laenge']}m")
-        
+            logger.info(
+                f"   Feld {fidx}: {feld['typ']}, Elemente {feld['start_element']}-{feld['start_element'] + feld['anzahl_elemente'] - 1}, Länge {feld['laenge']}m")
+
         if len(self.normale_felder) <= 1:
             # Bei einem Feld oder nur Kragarmen: nur ein Muster (alle belastet)
             self.belastungsmuster = [[True] * len(self.normale_felder)]
@@ -276,9 +278,10 @@ class FeebbBerechnungEC:
                 for kombi in itertools.combinations(range(n), r):
                     muster = [i in kombi for i in range(n)]
                     self.belastungsmuster.append(muster)
-            
-            logger.info(f"📊 Mehrfeldträger: {len(self.belastungsmuster)} Belastungsmuster generiert")
-    
+
+            logger.info(
+                f"📊 Mehrfeldträger: {len(self.belastungsmuster)} Belastungsmuster generiert")
+
     def _generiere_lastkombinationen(self):
         """
         Generiert alle relevanten Lastkombinationen nach Eurocode.
@@ -304,7 +307,8 @@ class FeebbBerechnungEC:
         # 1. Nur ständige Lasten: γ_G · G
         if g_lasten:
             # Alle G-Lasten summieren (verhindert Key-Kollision bei mehreren G mit gleichem lastfall)
-            g_sum = sum(self.gamma_g * float(l["wert"]) * self.sprungmass for l in g_lasten)
+            g_sum = sum(self.gamma_g *
+                        float(l["wert"]) * self.sprungmass for l in g_lasten)
             self.kombinationen_gzt.append({
                 "name": "GZT: γ_G · G",
                 "beschreibung": "Nur ständige Lasten mit Teilsicherheitsbeiwert",
@@ -316,7 +320,8 @@ class FeebbBerechnungEC:
         for q_last in q_lasten:
             lasten_dict = {}
             # Ständige Lasten (summiert als G_SUM)
-            g_sum = sum(self.gamma_g * float(l["wert"]) * self.sprungmass for l in g_lasten)
+            g_sum = sum(self.gamma_g *
+                        float(l["wert"]) * self.sprungmass for l in g_lasten)
             lasten_dict["G_SUM"] = g_sum
             # Eine veränderliche Last
             lasten_dict[q_last["lastfall"]] = self.gamma_q * \
@@ -335,7 +340,8 @@ class FeebbBerechnungEC:
             for leit_q in q_lasten:
                 lasten_dict = {}
                 # Ständige Lasten (summiert als G_SUM)
-                g_sum = sum(self.gamma_g * float(l["wert"]) * self.sprungmass for l in g_lasten)
+                g_sum = sum(
+                    self.gamma_g * float(l["wert"]) * self.sprungmass for l in g_lasten)
                 lasten_dict["G_SUM"] = g_sum
 
                 # Leiteinwirkung
@@ -365,7 +371,8 @@ class FeebbBerechnungEC:
             for leit_q in q_lasten:
                 lasten_dict = {}
                 # Ständige Lasten (ohne γ, summiert als G_SUM)
-                g_sum = sum(float(l["wert"]) * self.sprungmass for l in g_lasten)
+                g_sum = sum(float(l["wert"]) *
+                            self.sprungmass for l in g_lasten)
                 lasten_dict["G_SUM"] = g_sum
 
                 # Leiteinwirkung (ohne γ)
@@ -392,7 +399,8 @@ class FeebbBerechnungEC:
             for leit_q in q_lasten:
                 lasten_dict = {}
                 # Ständige Lasten (ohne γ, summiert als G_SUM)
-                g_sum = sum(float(l["wert"]) * self.sprungmass for l in g_lasten)
+                g_sum = sum(float(l["wert"]) *
+                            self.sprungmass for l in g_lasten)
                 lasten_dict["G_SUM"] = g_sum
 
                 # Leiteinwirkung mit ψ1
@@ -434,21 +442,22 @@ class FeebbBerechnungEC:
                 "lasten": lasten_dict,
                 "typ": "quasi_staendig"
             })
-        
+
         # Fallback: Falls keine Q-Lasten vorhanden, erstelle mindestens eine GZG-Kombination (nur G)
         # Dies ist wichtig für Durchbiegungsnachweise, die GZG-Werte benötigen
         if not q_lasten and g_lasten:
             lasten_dict = {}
             g_sum = sum(float(l["wert"]) * self.sprungmass for l in g_lasten)
             lasten_dict["G_SUM"] = g_sum
-            
+
             self.kombinationen_gzg.append({
                 "name": "GZG: G (nur ständige Lasten)",
                 "beschreibung": "Charakteristische Kombination ohne veränderliche Lasten",
                 "lasten": lasten_dict,
                 "typ": "nur_g"
             })
-            logger.info("⚠️ Keine veränderlichen Lasten → GZG-Fallback erstellt (nur G)")
+            logger.info(
+                "⚠️ Keine veränderlichen Lasten → GZG-Fallback erstellt (nur G)")
 
         logger.info(
             f"📋 {len(self.kombinationen_gzt)} GZT-Kombinationen und {len(self.kombinationen_gzg)} GZG-Kombinationen generiert")
@@ -470,7 +479,8 @@ class FeebbBerechnungEC:
             # Für jedes Belastungsmuster eine Berechnung durchführen
             for idx, muster in enumerate(self.belastungsmuster):
                 # FEEBB-Dict für diese Kombination mit diesem Muster erstellen
-                feebb_dict = self._erstelle_feebb_dict_fuer_kombination(kombi, muster)
+                feebb_dict = self._erstelle_feebb_dict_fuer_kombination(
+                    kombi, muster)
 
                 # FEEBB-Berechnung durchführen
                 ergebnis = self._fuehre_feebb_berechnung_durch(feebb_dict)
@@ -487,7 +497,8 @@ class FeebbBerechnungEC:
             # Für jedes Belastungsmuster eine Berechnung durchführen
             for idx, muster in enumerate(self.belastungsmuster):
                 # FEEBB-Dict für diese Kombination mit diesem Muster erstellen
-                feebb_dict = self._erstelle_feebb_dict_fuer_kombination(kombi, muster)
+                feebb_dict = self._erstelle_feebb_dict_fuer_kombination(
+                    kombi, muster)
 
                 # FEEBB-Berechnung durchführen
                 ergebnis = self._fuehre_feebb_berechnung_durch(feebb_dict)
@@ -513,51 +524,52 @@ class FeebbBerechnungEC:
         """
         # Ständige Last (auf alle Felder) - direkt aus G_SUM lesen
         g_last_gesamt = kombination["lasten"].get("G_SUM", 0.0)
-        
+
         # Veränderliche Lasten auftrennen nach Leit- und Begleitlasten
         leiteinwirkung = kombination.get("leiteinwirkung", None)
-        
+
         # Leitlast (wird feldweise nach Muster aufgebracht)
         q_leit_wert = 0.0
         if leiteinwirkung:
             q_leit_wert = kombination["lasten"].get(leiteinwirkung, 0.0)
-        
+
         # Begleitlesten (werden auf ALLE Felder aufgebracht)
         q_begleit_gesamt = 0.0
         for lastfall, wert in kombination["lasten"].items():
             # Alle Lasten außer G_SUM und Leitlast
             if lastfall != "G_SUM" and lastfall != leiteinwirkung:
                 q_begleit_gesamt += wert
-        
+
         # Falls keine Leiteinwirkung definiert (z.B. nur G), alle Q-Lasten als Leitlast behandeln
         if not leiteinwirkung:
-            q_leit_wert = sum(wert for lastfall, wert in kombination["lasten"].items() 
-                             if lastfall != "G_SUM")
+            q_leit_wert = sum(wert for lastfall, wert in kombination["lasten"].items()
+                              if lastfall != "G_SUM")
 
         # Erstelle Lastverteilung pro Feld (wichtig für konsistente Belastung!)
         # Key: start_element bis end_element, Value: Lastgröße
         feld_lasten = {}
-        
+
         # Debug: Zeige Belastungsmuster (nur für erste paar Muster, sonst zu viel Output)
         if hasattr(self, '_debug_counter'):
             self._debug_counter += 1
         else:
             self._debug_counter = 0
-        
+
         if self._debug_counter < 3:  # Nur erste 3 Kombinationen debuggen
             logger.info(f"🎯 Belastungsmuster: {belastungsmuster}")
             logger.info(f"   G-Last: {g_last_gesamt:.2f} N/mm")
             logger.info(f"   Q-Leitlast: {q_leit_wert:.2f} N/mm (feldweise)")
-            logger.info(f"   Q-Begleitlesten: {q_begleit_gesamt:.2f} N/mm (auf alle Felder)")
-        
+            logger.info(
+                f"   Q-Begleitlesten: {q_begleit_gesamt:.2f} N/mm (auf alle Felder)")
+
         for feld in self.felder:
             start_elem = feld["start_element"]
             end_elem = feld["start_element"] + feld["anzahl_elemente"]
             feld_typ = feld["typ"]
-            
+
             # Ständige Last + Begleitlesten (auf alle Felder)
             last_wert = g_last_gesamt + q_begleit_gesamt
-            
+
             # Leitlast hinzufügen (feldweise nach Muster)
             if feld_typ.startswith("feld_"):
                 # Normales Feld - prüfe Belastungsmuster für Leitlast
@@ -566,27 +578,30 @@ class FeebbBerechnungEC:
                     if norm_feld["typ"] == feld_typ:
                         feld_idx = fidx
                         break
-                
+
                 if feld_idx is not None and feld_idx < len(belastungsmuster) and belastungsmuster[feld_idx]:
                     last_wert += q_leit_wert
                     if self._debug_counter < 3:
-                        logger.info(f"   {feld_typ} (Elem {start_elem}-{end_elem-1}): {last_wert:.2f} N/mm (G+Begleit+Leit)")
+                        logger.info(
+                            f"   {feld_typ} (Elem {start_elem}-{end_elem-1}): {last_wert:.2f} N/mm (G+Begleit+Leit)")
                 else:
                     if self._debug_counter < 3:
-                        logger.info(f"   {feld_typ} (Elem {start_elem}-{end_elem-1}): {last_wert:.2f} N/mm (G+Begleit)")
+                        logger.info(
+                            f"   {feld_typ} (Elem {start_elem}-{end_elem-1}): {last_wert:.2f} N/mm (G+Begleit)")
             else:
                 # Kragarme werden immer mit Leitlast belastet
                 last_wert += q_leit_wert
                 if self._debug_counter < 3:
-                    logger.info(f"   {feld_typ} (Elem {start_elem}-{end_elem-1}): {last_wert:.2f} N/mm (Kragarm, G+Begleit+Leit)")
-            
+                    logger.info(
+                        f"   {feld_typ} (Elem {start_elem}-{end_elem-1}): {last_wert:.2f} N/mm (Kragarm, G+Begleit+Leit)")
+
             # Speichere Lastgröße für diesen Elementbereich
             for elem_idx in range(start_elem, end_elem):
                 feld_lasten[elem_idx] = last_wert
 
         # Jetzt Elemente mit Lasten erstellen
         elements_mit_lasten = []
-        
+
         for idx, element_data in enumerate(self.gesamt_elemente):
             element = {
                 "length": element_data["length"],
@@ -628,7 +643,7 @@ class FeebbBerechnungEC:
             # FEEBB-Objekte erstellen
             elements = [Element(e) for e in feebb_dict["elements"]]
             beam = Beam(elements, feebb_dict["supports"])
-            post = Postprocessor(beam, 100)  # 100 Auswertungspunkte
+            post = Postprocessor(beam, 50)  # 100 Auswertungspunkte
 
             # Schnittgrößen berechnen
             moment = post.interp("moment")
@@ -733,7 +748,7 @@ class FeebbBerechnungEC:
         querkraft_min_kombi = [""] * n_punkte
         durchbiegung_max_kombi = [""] * n_punkte
         durchbiegung_min_kombi = [""] * n_punkte
-        
+
         # Maßgebende Belastungsmuster je Punkt
         moment_max_muster = [None] * n_punkte
         moment_min_muster = [None] * n_punkte
@@ -818,13 +833,13 @@ class FeebbBerechnungEC:
         else:
             durchbiegung_abs_kombi = durchbiegung_min_kombi[durchbiegung_abs_min_idx]
             durchbiegung_abs_muster = durchbiegung_min_muster[durchbiegung_abs_min_idx]
-        
+
         # Finde die vollständigen Verläufe der maßgebenden Kombinationen
         # (für GUI-Darstellung mit korrektem Belastungsmuster)
         moment_massgebend_verlauf = None
         querkraft_massgebend_verlauf = None
         durchbiegung_massgebend_verlauf = None
-        
+
         for erg in ergebnisse:
             if erg["kombination"]["name"] == moment_abs_kombi and erg.get("belastungsmuster") == moment_abs_muster:
                 moment_massgebend_verlauf = erg
@@ -832,11 +847,14 @@ class FeebbBerechnungEC:
                 querkraft_massgebend_verlauf = erg
             if erg["kombination"]["name"] == durchbiegung_abs_kombi and erg.get("belastungsmuster") == durchbiegung_abs_muster:
                 durchbiegung_massgebend_verlauf = erg
-        
+
         # Terminal-Ausgabe der maßgebenden Kombinationen
-        self._zeige_massgebende_kombination_terminal(grenzzustand, "Moment", moment_abs_kombi, moment_abs_muster, abs_max_moment)
-        self._zeige_massgebende_kombination_terminal(grenzzustand, "Querkraft", querkraft_abs_kombi, querkraft_abs_muster, abs_max_querkraft)
-        self._zeige_massgebende_kombination_terminal(grenzzustand, "Durchbiegung", durchbiegung_abs_kombi, durchbiegung_abs_muster, abs_max_durchbiegung)
+        self._zeige_massgebende_kombination_terminal(
+            grenzzustand, "Moment", moment_abs_kombi, moment_abs_muster, abs_max_moment)
+        self._zeige_massgebende_kombination_terminal(
+            grenzzustand, "Querkraft", querkraft_abs_kombi, querkraft_abs_muster, abs_max_querkraft)
+        self._zeige_massgebende_kombination_terminal(
+            grenzzustand, "Durchbiegung", durchbiegung_abs_kombi, durchbiegung_abs_muster, abs_max_durchbiegung)
 
         return {
             "envelope": {
@@ -883,7 +901,7 @@ class FeebbBerechnungEC:
     def _zeige_massgebende_kombination_terminal(self, grenzzustand, schnittgroesse, kombi_name, belastungsmuster, max_wert):
         """
         Zeigt die maßgebende Kombination im Terminal an.
-        
+
         Args:
             grenzzustand (str): "GZT" oder "GZG"
             schnittgroesse (str): "Moment", "Querkraft" oder "Durchbiegung"
@@ -894,18 +912,18 @@ class FeebbBerechnungEC:
         if belastungsmuster is None:
             logger.info(f"📊 {grenzzustand} {schnittgroesse}: {kombi_name}")
             return
-        
+
         # Belastungsmuster-String erstellen
         belastete_felder = []
         unbelastete_felder = []
-        
+
         for idx, ist_belastet in enumerate(belastungsmuster):
             feld_name = f"Feld {idx + 1}"
             if ist_belastet:
                 belastete_felder.append(feld_name)
             else:
                 unbelastete_felder.append(feld_name)
-        
+
         # Einheit bestimmen
         if schnittgroesse == "Moment":
             einheit = "kNm"
@@ -916,18 +934,21 @@ class FeebbBerechnungEC:
         else:  # Durchbiegung
             einheit = "mm"
             wert_ausgabe = max_wert
-        
-        belastet_str = ", ".join(belastete_felder) if belastete_felder else "keine"
-        unbelastet_str = ", ".join(unbelastete_felder) if unbelastete_felder else "keine"
-        
+
+        belastet_str = ", ".join(
+            belastete_felder) if belastete_felder else "keine"
+        unbelastet_str = ", ".join(
+            unbelastete_felder) if unbelastete_felder else "keine"
+
         logger.info(f"")
-        logger.info(f"📊 === {grenzzustand} - Maßgebend für {schnittgroesse} ===")
+        logger.info(
+            f"📊 === {grenzzustand} - Maßgebend für {schnittgroesse} ===")
         logger.info(f"   Kombination: {kombi_name}")
         logger.info(f"   Maximalwert: {wert_ausgabe:.2f} {einheit}")
         logger.info(f"   ✓ Belastete Felder: {belastet_str}")
         logger.info(f"   ✗ Unbelastete Felder: {unbelastet_str}")
         logger.info(f"")
-    
+
     def _erstelle_detaillierte_kombinationsergebnisse(self, ergebnisse, grenzzustand):
         """
         Erstellt detaillierte Ergebnisse für jeden Kombinationstyp.
