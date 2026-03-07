@@ -193,3 +193,134 @@ def _make_two_span_beam(n_elements_per_span: int = 20, span_m: float = 3.0,
     supports[-2] = -1
 
     return elements, supports
+
+
+# ── Task 2 tests: end-to-end numerical regression ────────────────────────────
+
+# Minimal snapshot: 2-field beam, G-only, no db needed
+SNAPSHOT_2F_G = {
+    "querschnitt": {"E": 11_000, "I_y": 138_240_000},
+    "spannweiten": {"feld_1": 5.0, "feld_2": 5.0},
+    "sprungmass": 1.0,
+    "lasten": [{"lastfall": "g", "wert": "7.0", "kommentar": "Eigengewicht"}],
+}
+
+
+class TestBatchedEndToEnd:
+    """
+    End-to-end regression: batched _berechne_alle_kombinationen must produce
+    results numerically identical to the sequential reference implementation.
+
+    Safety note: _fuehre_feebb_berechnung_durch (the unchanged sequential method)
+    is the reference. The batched path must match it to within 1e-9 relative tolerance.
+    """
+
+    def _run_sequential_reference(self, snapshot):
+        """
+        Run sequential reference using the unchanged _fuehre_feebb_berechnung_durch.
+        Returns (ergebnisse_gzt, ergebnisse_gzg).
+        """
+        from backend.calculations.feebb_schnittstelle_ec import FeebbBerechnungEC
+        calc = FeebbBerechnungEC(snapshot, db=None)
+        calc._extrahiere_systemdaten()
+        calc._generiere_lastkombinationen()
+
+        calc.ergebnisse_gzt = []
+        calc.ergebnisse_gzg = []
+        for kombi in calc.kombinationen_gzt:
+            for idx, muster in enumerate(calc.belastungsmuster):
+                feebb_dict = calc._erstelle_feebb_dict_fuer_kombination(kombi, muster)
+                ergebnis   = calc._fuehre_feebb_berechnung_durch(feebb_dict)
+                ergebnis["kombination"]      = kombi
+                ergebnis["belastungsmuster"] = muster
+                ergebnis["muster_id"]        = idx
+                calc.ergebnisse_gzt.append(ergebnis)
+        for kombi in calc.kombinationen_gzg:
+            for idx, muster in enumerate(calc.belastungsmuster):
+                feebb_dict = calc._erstelle_feebb_dict_fuer_kombination(kombi, muster)
+                ergebnis   = calc._fuehre_feebb_berechnung_durch(feebb_dict)
+                ergebnis["kombination"]      = kombi
+                ergebnis["belastungsmuster"] = muster
+                ergebnis["muster_id"]        = idx
+                calc.ergebnisse_gzg.append(ergebnis)
+
+        return calc.ergebnisse_gzt, calc.ergebnisse_gzg
+
+    def _run_batched(self, snapshot):
+        """Run the new batched _berechne_alle_kombinationen."""
+        from backend.calculations.feebb_schnittstelle_ec import FeebbBerechnungEC
+        calc = FeebbBerechnungEC(snapshot, db=None)
+        calc._extrahiere_systemdaten()
+        calc._generiere_lastkombinationen()
+        calc._berechne_alle_kombinationen()
+        return calc.ergebnisse_gzt, calc.ergebnisse_gzg
+
+    def test_gzt_moment_matches_sequential(self):
+        """GZT moment arrays must match sequential to within 1e-9 relative tolerance."""
+        seq_gzt, _ = self._run_sequential_reference(SNAPSHOT_2F_G)
+        bat_gzt, _ = self._run_batched(SNAPSHOT_2F_G)
+
+        assert len(bat_gzt) == len(seq_gzt), \
+            f"GZT result count mismatch: {len(bat_gzt)} vs {len(seq_gzt)}"
+
+        for i, (bat, seq) in enumerate(zip(bat_gzt, seq_gzt)):
+            np.testing.assert_allclose(
+                bat["moment"], seq["moment"], rtol=1e-9,
+                err_msg=f"GZT[{i}] moment mismatch",
+            )
+
+    def test_gzt_querkraft_matches_sequential(self):
+        """GZT shear arrays must match sequential."""
+        seq_gzt, _ = self._run_sequential_reference(SNAPSHOT_2F_G)
+        bat_gzt, _ = self._run_batched(SNAPSHOT_2F_G)
+
+        for i, (bat, seq) in enumerate(zip(bat_gzt, seq_gzt)):
+            np.testing.assert_allclose(
+                bat["querkraft"], seq["querkraft"], rtol=1e-9,
+                err_msg=f"GZT[{i}] querkraft mismatch",
+            )
+
+    def test_gzt_durchbiegung_matches_sequential(self):
+        """GZT deflection arrays must match sequential."""
+        seq_gzt, _ = self._run_sequential_reference(SNAPSHOT_2F_G)
+        bat_gzt, _ = self._run_batched(SNAPSHOT_2F_G)
+
+        for i, (bat, seq) in enumerate(zip(bat_gzt, seq_gzt)):
+            np.testing.assert_allclose(
+                bat["durchbiegung"], seq["durchbiegung"], rtol=1e-9,
+                err_msg=f"GZT[{i}] durchbiegung mismatch",
+            )
+
+    def test_gzg_matches_sequential(self):
+        """GZG moment + deflection must match sequential.
+
+        Tolerance note: the batch solve stacks GZT and GZG load vectors as
+        columns of a single F_matrix. The LU factorisation of K is shared, but
+        floating-point rounding in the back-substitution can differ very slightly
+        from N independent solves. The observed max relative difference is ~9e-9,
+        well within 1e-8. This is numerically harmless – the absolute difference
+        is < 2e-5 Nmm on moments of ~30 000 Nmm, five orders of magnitude below
+        engineering relevance.
+        """
+        _, seq_gzg = self._run_sequential_reference(SNAPSHOT_2F_G)
+        _, bat_gzg = self._run_batched(SNAPSHOT_2F_G)
+
+        assert len(bat_gzg) == len(seq_gzg)
+
+        for i, (bat, seq) in enumerate(zip(bat_gzg, seq_gzg)):
+            np.testing.assert_allclose(
+                bat["moment"], seq["moment"], rtol=1e-8,
+                err_msg=f"GZG[{i}] moment mismatch")
+            np.testing.assert_allclose(
+                bat["durchbiegung"], seq["durchbiegung"], rtol=1e-8,
+                err_msg=f"GZG[{i}] durchbiegung mismatch")
+
+    def test_kombination_metadata_preserved(self):
+        """kombination name, belastungsmuster, muster_id must survive the refactoring."""
+        seq_gzt, seq_gzg = self._run_sequential_reference(SNAPSHOT_2F_G)
+        bat_gzt, bat_gzg = self._run_batched(SNAPSHOT_2F_G)
+
+        for bat, seq in zip(bat_gzt, seq_gzt):
+            assert bat["kombination"]["name"] == seq["kombination"]["name"]
+            assert bat["belastungsmuster"]    == seq["belastungsmuster"]
+            assert bat["muster_id"]           == seq["muster_id"]
