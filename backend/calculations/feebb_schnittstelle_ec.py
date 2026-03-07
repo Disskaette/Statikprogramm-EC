@@ -477,14 +477,15 @@ class FeebbBerechnungEC:
         """
         logger.info("🔢 Berechne alle Lastkombinationen (gebündelter Batch-Solve)")
 
-        # ── Step 1: collect all (grenzzustand, kombi, muster) tasks ─────────
+        # ── Step 1: collect all (grenzzustand, kombi, muster, muster_id) tasks ──
+        # muster_id is captured here (O(1)) to avoid an O(N²) .index() lookup later.
         tasks = []
         for kombi in self.kombinationen_gzt:
-            for muster in self.belastungsmuster:
-                tasks.append(("GZT", kombi, muster))
+            for muster_id, muster in enumerate(self.belastungsmuster):
+                tasks.append(("GZT", kombi, muster, muster_id))
         for kombi in self.kombinationen_gzg:
-            for muster in self.belastungsmuster:
-                tasks.append(("GZG", kombi, muster))
+            for muster_id, muster in enumerate(self.belastungsmuster):
+                tasks.append(("GZG", kombi, muster, muster_id))
 
         if not tasks:
             self.ergebnisse_gzt = []
@@ -493,14 +494,25 @@ class FeebbBerechnungEC:
 
         # ── Step 2: assemble all Beam objects (lazy – K and F built, no solve) ──
         # K is identical for every task; F differs per (kombi, muster).
-        beams      = []
-        muster_ids = []
-        for (_, kombi, muster) in tasks:
+        beams = []
+        for (_, kombi, muster, _muster_id) in tasks:
             feebb_dict = self._erstelle_feebb_dict_fuer_kombination(kombi, muster)
             elements   = [Element(e) for e in feebb_dict["elements"]]
             beam       = Beam(elements, feebb_dict["supports"], lazy_solve=True)
             beams.append(beam)
-            muster_ids.append(self.belastungsmuster.index(muster))
+
+        # ── Safety assertion: all beams must share an identical stiffness matrix K.
+        # K depends on geometry (element lengths) and material (E·I) only – never on loads.
+        # If K diverges across beams, the batched solve would produce silently wrong results.
+        # Checking only the diagonal is O(N · n_dof) and sufficient for catching most divergences.
+        K_diag = beams[0].stiffness.diagonal()
+        for check_idx, b in enumerate(beams[1:], start=1):
+            if not np.allclose(b.stiffness.diagonal(), K_diag, rtol=1e-12):
+                raise RuntimeError(
+                    f"Batched solve precondition violated: beam[{check_idx}] has a different "
+                    f"stiffness diagonal than beam[0]. All beams in a batch must share the "
+                    f"same K (identical geometry, E·I, and support conditions)."
+                )
 
         # ── Step 3: one batched solve ────────────────────────────────────────
         # K taken from the first beam – all beams share identical K
@@ -513,12 +525,19 @@ class FeebbBerechnungEC:
         self.ergebnisse_gzt = []
         self.ergebnisse_gzg = []
 
-        for col_idx, ((gs, kombi, muster), beam) in enumerate(zip(tasks, beams)):
+        for col_idx, ((gs, kombi, muster, muster_id), beam) in enumerate(zip(tasks, beams)):
             beam.displacement = X_matrix[:, col_idx]              # inject solution vector
-            ergebnis = self._fuehre_postprocessing(beam)
+            try:
+                ergebnis = self._fuehre_postprocessing(beam)
+            except Exception as exc:
+                kombi_name = kombi.get("name", str(kombi)) if isinstance(kombi, dict) else str(kombi)
+                raise RuntimeError(
+                    f"Postprocessing failed for task {col_idx}/{len(tasks)} "
+                    f"({gs}, {kombi_name}): {exc}"
+                ) from exc
             ergebnis["kombination"]      = kombi
             ergebnis["belastungsmuster"] = muster
-            ergebnis["muster_id"]        = muster_ids[col_idx]
+            ergebnis["muster_id"]        = muster_id   # from task tuple, not from .index()
 
             if gs == "GZT":
                 self.ergebnisse_gzt.append(ergebnis)
@@ -649,8 +668,10 @@ class FeebbBerechnungEC:
         }
 
     def _fuehre_postprocessing(self, beam) -> dict:
-        """
-        Run Postprocessor on a Beam that already has .displacement set.
+        """Run Postprocessor on a Beam that already has .displacement set.
+
+        PRECONDITION: beam.displacement must be set before calling this method.
+        Use lazy_solve=True on Beam and assign displacement from the batched solve result.
 
         Separates the interpolation step from the solve step, enabling
         the batched solve optimisation in _berechne_alle_kombinationen.
@@ -661,20 +682,21 @@ class FeebbBerechnungEC:
         Returns:
             dict: {"moment": list, "querkraft": list, "durchbiegung": list}
         """
-        try:
-            post = Postprocessor(beam, 50)  # 50 Auswertungspunkte pro Element
-            return {
-                "moment":       post.interp("moment"),
-                "querkraft":    post.interp("shear"),
-                "durchbiegung": post.interp("displacement"),
-            }
-        except Exception as e:
-            logger.error(f"Fehler beim Postprocessing: {e}")
-            raise
+        post = Postprocessor(beam, 50)  # 50 evaluation points per element
+        return {
+            "moment":       post.interp("moment"),
+            "querkraft":    post.interp("shear"),
+            "durchbiegung": post.interp("displacement"),
+        }
 
     def _fuehre_feebb_berechnung_durch(self, feebb_dict):
-        """
-        Führt eine einzelne FEEBB-Berechnung durch.
+        """Führt eine einzelne FEEBB-Berechnung durch.
+
+        NOTE: This method is the sequential reference implementation retained for:
+          1. Regression testing (tests/test_batched_fem_solve.py uses it as ground truth)
+          2. Documentation of the original per-combination flow
+        It is NOT called from _berechne_alle_kombinationen (which now uses the batched path).
+        Do not remove without updating the regression tests.
 
         Args:
             feebb_dict (dict): FEEBB-Dictionary mit elements und supports
