@@ -49,12 +49,18 @@ class MethodeNachweisEC5:
         nkl = querschnitt.get("nkl", 1)
         gruppe = querschnitt.get("materialgruppe", "")
 
-        # Spannweite (erste verfügbare Spannweite)
-        l = 1000  # Fallback in mm
+        # Governing span for L/n deflection limit.
+        # Use the longest inner field (feld_*) because the governing deflection check
+        # is always for the field with the largest span. Cantilevers (kragarm_*) are
+        # excluded – they have separate limit conventions not handled here.
+        # For a single-span beam this always equals the only span.
+        l = 1000  # fallback in mm
         if spannweiten:
-            # Erste Spannweite in m
-            l_m = next(iter(spannweiten.values()), 1.0)
-            l = l_m * 1000  # Umrechnung m → mm
+            feld_laengen = [v for k, v in spannweiten.items() if k.startswith("feld_")]
+            if feld_laengen:
+                l = max(feld_laengen) * 1000  # m → mm
+            else:
+                l = next(iter(spannweiten.values()), 1.0) * 1000
 
         # Materialwerte aus DB
         bemessungsdaten = self.db.get_bemessungsdaten(gruppe, typ, klasse, nkl)
@@ -151,9 +157,15 @@ class MethodeNachweisEC5:
                 # EC-Modus: Verwende bereits berechnete Durchbiegungen aus FEEBB-EC
                 logger.info("🔬 EC-Modus: Verwende FEEBB-EC Durchbiegungen")
 
-                # Durchbiegung direkt aus FEEBB-Envelope
-                delta_inst = gzg_schnittgroessen["max"].get(
-                    "durchbiegung", 0)  # mm
+                # w_inst: max absolute deflection across ALL GZG combinations
+                # (characteristic combination governs – EC5 Table 7.2 row 1).
+                delta_inst = gzg_schnittgroessen["max"].get("durchbiegung", 0)  # mm
+
+                # w_fin base: quasi-permanent deflection only (EC5 §2.2.3, Table 7.2 row 2+3).
+                # If the quasi-permanent max was not stored (e.g. old snapshot), fall back to
+                # delta_inst (conservative).
+                delta_quasi = gzg_schnittgroessen["max"].get(
+                    "durchbiegung_quasi", delta_inst)  # mm
 
                 # kdef aus Materialdatenbank
                 querschnitt = self.snapshot.get("querschnitt", {})
@@ -165,17 +177,20 @@ class MethodeNachweisEC5:
                     gruppe, typ, klasse, nkl)
                 kdef = bemessungsdaten.get("kdef", 0.8)
 
-                # Zeitabhängige Durchbiegungen
-                delta_end = (1 + kdef) * delta_inst
+                # EC5 §2.2.3: w_fin = w_inst,quasi · (1 + kdef)
+                # Using the quasi-permanent deflection as base ensures creep is only
+                # applied to (G + ψ₂·Q), not to the full characteristic (G + Q).
+                delta_end = (1 + kdef) * delta_quasi
                 gebrauchstauglichkeit = self.snapshot.get(
                     "gebrauchstauglichkeit", {})
                 delta_0 = gebrauchstauglichkeit.get("w_c", 0)
                 delta_netto = delta_end - delta_0
 
                 logger.info(f"EC-FEEBB Durchbiegungen:")
-                logger.info(f"  - δinst (aus FEEBB-EC) = {delta_inst:.2f} mm")
+                logger.info(f"  - δinst (aus FEEBB-EC, charakteristisch) = {delta_inst:.2f} mm")
+                logger.info(f"  - δquasi (quasi-ständig) = {delta_quasi:.2f} mm")
                 logger.info(
-                    f"  - δend = (1+kdef) · δinst = {delta_end:.2f} mm (kdef = {kdef:.2f})")
+                    f"  - δend = (1+kdef) · δquasi = {delta_end:.2f} mm (kdef = {kdef:.2f})")
                 logger.info(
                     f"  - δnetto = {delta_netto:.2f} mm (Δ₀ = {delta_0:.2f} mm)")
 
@@ -239,8 +254,10 @@ class MethodeNachweisEC5:
             logger.debug(
                 f"Durchbiegung Debug: delta_inst berechnet = {delta_inst} mm")
 
-            # δend = kdef * δinst (Langzeitdurchbiegung)
-            delta_end = kdef * delta_inst
+            # EC5 §2.2.3: w_fin = (1 + kdef) · w_inst
+            # NOTE: kdef alone would give only the creep increment (delta_end < delta_inst),
+            # which is physically impossible. The factor must include the instantaneous part.
+            delta_end = (1 + kdef) * delta_inst
 
             # δnetto = δend - Δ₀ (Netto-Enddurchbiegung)
             # Δ₀ = Anfangsüberhöhung (aus Gebrauchstauglichkeit)

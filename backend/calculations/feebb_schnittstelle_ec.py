@@ -787,6 +787,26 @@ class FeebbBerechnungEC:
         # === GZG-Envelopes ===
         gzg_envelope = self._berechne_envelope(self.ergebnisse_gzg, "GZG")
 
+        # EC5 §2.2.3: w_fin must be based on the quasi-permanent combination, not the
+        # characteristic one. Store the max absolute deflection from quasi-permanent
+        # (and G-only) results separately so nachweis_ec5.py can apply kdef correctly.
+        # Without this, (1+kdef) would be applied to the characteristic deflection,
+        # overestimating creep on the variable-load portion.
+        quasi_typen = ("quasi_staendig", "nur_g")
+        quasi_ergebnisse = [
+            e for e in self.ergebnisse_gzg
+            if e["kombination"]["typ"] in quasi_typen
+        ]
+        if quasi_ergebnisse and gzg_envelope:
+            gzg_envelope["max"]["durchbiegung_quasi"] = max(
+                e["max"]["durchbiegung"] for e in quasi_ergebnisse
+            )
+            logger.debug(
+                f"📐 GZG quasi-permanent max deflection: "
+                f"{gzg_envelope['max']['durchbiegung_quasi']:.3f} mm "
+                f"(characteristic max: {gzg_envelope['max']['durchbiegung']:.3f} mm)"
+            )
+
         # === Detaillierte Kombinationsergebnisse erstellen ===
         gzt_detail = self._erstelle_detaillierte_kombinationsergebnisse(
             self.ergebnisse_gzt, "GZT")
