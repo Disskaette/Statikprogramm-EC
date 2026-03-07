@@ -285,7 +285,7 @@ def submesh_supports(supports, size_mesh):
 class Beam():
     """Class for an assembly of elements into a single beam."""
 
-    def __init__(self, elements, supports):
+    def __init__(self, elements, supports, lazy_solve: bool = False):
         self.len_elements = [element.length for element in elements]
         self.E_elements = [element.E for element in elements]
         self.I_elements = [element.I for element in elements]
@@ -315,7 +315,11 @@ class Beam():
             if self.supports[i] > 0:
                 self.stiffness[i, i] = self.stiffness[i, i] + self.supports[i]
 
-        self.displacement = np.linalg.solve(self.stiffness, self.load)
+        if not lazy_solve:
+            # Solve K·x = F for nodal displacements.
+            # Skip when lazy_solve=True – caller sets .displacement externally
+            # after a batched np.linalg.solve(K, F_matrix) call.
+            self.displacement = np.linalg.solve(self.stiffness, self.load)
 
 
 class Postprocessor():
