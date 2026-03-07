@@ -319,6 +319,9 @@ class Beam():
             # Solve K·x = F for nodal displacements.
             # Skip when lazy_solve=True – caller sets .displacement externally
             # after a batched np.linalg.solve(K, F_matrix) call.
+            # PRECONDITION for batched use: all beams in the batch must share
+            # an identical K (same geometry + supports, only loads differ).
+            # Batching across different K matrices produces silently wrong results.
             self.displacement = np.linalg.solve(self.stiffness, self.load)
 
 
@@ -375,6 +378,15 @@ class Postprocessor():
 
     def interp(self, action):
         """Application of the interpolation functions."""
+        # Guard: lazy_solve=True beams require .displacement to be set externally
+        # before postprocessing. Fail fast with a clear message rather than a
+        # cryptic AttributeError deep in the loop.
+        if not hasattr(self.beam, "displacement"):
+            raise RuntimeError(
+                "Beam.displacement has not been set. "
+                "If the Beam was created with lazy_solve=True, assign "
+                "beam.displacement = X before calling Postprocessor."
+            )
 
         points = []
         for i in range(self.beam.num_elements):
