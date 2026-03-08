@@ -30,10 +30,10 @@ export function AuflagerTable({ data }: Props) {
                 Auflager
               </th>
               <th className="text-right py-2 pr-4 font-medium text-gray-600">
-                Design [kN]
+                Charakteristisch [kN]
               </th>
               <th className="text-right py-2 font-medium text-gray-600">
-                Charakteristisch [kN]
+                Design [kN]
               </th>
             </tr>
           </thead>
@@ -47,10 +47,10 @@ export function AuflagerTable({ data }: Props) {
                   {label}
                 </td>
                 <td className="py-2 pr-4 text-right text-gray-700">
-                  {toKN(data.gzt_design[i])}
+                  {toKN(data.gzg_charakteristisch[i])}
                 </td>
                 <td className="py-2 text-right text-gray-700">
-                  {toKN(data.gzg_charakteristisch[i])}
+                  {toKN(data.gzt_design[i])}
                 </td>
               </tr>
             ))}
