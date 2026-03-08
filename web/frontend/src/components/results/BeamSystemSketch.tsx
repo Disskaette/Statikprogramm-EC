@@ -129,10 +129,10 @@ function SystemSketchSvg({ spans, kragarmLinks, kragarmRechts }: SystemSketchPro
         <text
           key={`label-${i}`}
           x={toX(sx)}
-          y={BEAM_Y + SUPPORT_H + 13}
+          y={BEAM_Y + SUPPORT_H + 16}
           textAnchor="middle"
-          fontSize="11"
-          fontWeight="600"
+          fontSize="14"
+          fontWeight="700"
           fill="#374151"
           fontFamily="system-ui, sans-serif"
         >
