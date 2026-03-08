@@ -22,15 +22,6 @@ import {
 } from "./beamGeometry";
 
 // ---------------------------------------------------------------------------
-// CSS variable helper
-// ---------------------------------------------------------------------------
-
-function getCssVar(name: string): string {
-  if (typeof window === "undefined") return "";
-  return getComputedStyle(document.documentElement).getPropertyValue(name).trim();
-}
-
-// ---------------------------------------------------------------------------
 // SVG system sketch
 // ---------------------------------------------------------------------------
 
@@ -93,9 +84,11 @@ function SystemSketchSvg({ spans, kragarmLinks, kragarmRechts }: SystemSketchPro
     xAccum += span.length;
   });
 
-  const fgColor = getCssVar("--foreground") || "#0a0a0a";
-  const mutedColor = getCssVar("--muted-foreground") || "#737373";
-  const borderColor = getCssVar("--border") || "#e5e7eb";
+  // Use CSS variable strings directly so the browser always resolves the
+  // current theme colour at paint time – no stale-colour bug on theme toggle.
+  const FG = "var(--foreground)";
+  const MUTED = "var(--muted-foreground)";
+  const BORDER = "var(--border)";
 
   return (
     <svg
@@ -111,7 +104,7 @@ function SystemSketchSvg({ spans, kragarmLinks, kragarmRechts }: SystemSketchPro
         y1={BEAM_Y}
         x2={toX(total)}
         y2={BEAM_Y}
-        stroke={fgColor}
+        stroke={FG}
         strokeWidth={3}
       />
 
@@ -120,13 +113,13 @@ function SystemSketchSvg({ spans, kragarmLinks, kragarmRechts }: SystemSketchPro
         <path
           key={sx}
           d={trianglePath(sx)}
-          fill={fgColor}
+          fill={FG}
           stroke="none"
           opacity={0.85}
         />
       ))}
 
-      {/* Support labels A, B, C, … below each triangle – colour tracks Light/Dark mode */}
+      {/* Support labels A, B, C, … below each triangle */}
       {supports.map((sx, i) => (
         <text
           key={`label-${i}`}
@@ -135,7 +128,7 @@ function SystemSketchSvg({ spans, kragarmLinks, kragarmRechts }: SystemSketchPro
           textAnchor="middle"
           fontSize="14"
           fontWeight="700"
-          fill={fgColor}
+          fill={FG}
           fontFamily="system-ui, sans-serif"
         >
           {String.fromCharCode(65 + i)}
@@ -150,7 +143,7 @@ function SystemSketchSvg({ spans, kragarmLinks, kragarmRechts }: SystemSketchPro
           y1={BEAM_Y + SUPPORT_H + 1}
           x2={toX(sx) + SUPPORT_H * 0.9}
           y2={BEAM_Y + SUPPORT_H + 1}
-          stroke={borderColor}
+          stroke={BORDER}
           strokeWidth={1.5}
         />
       ))}
@@ -163,7 +156,7 @@ function SystemSketchSvg({ spans, kragarmLinks, kragarmRechts }: SystemSketchPro
           y1={BEAM_Y - 5}
           x2={toX(bx)}
           y2={BEAM_Y + 5}
-          stroke={mutedColor}
+          stroke={MUTED}
           strokeWidth={1}
         />
       ))}
@@ -181,7 +174,7 @@ function SystemSketchSvg({ spans, kragarmLinks, kragarmRechts }: SystemSketchPro
               y={LABEL_Y}
               textAnchor="middle"
               fontSize={11}
-              fill={mutedColor}
+              fill={MUTED}
               fontFamily="system-ui, sans-serif"
             >
               {f.label}
@@ -193,7 +186,7 @@ function SystemSketchSvg({ spans, kragarmLinks, kragarmRechts }: SystemSketchPro
               y1={DIM_Y - 8}
               x2={x1px - 4}
               y2={DIM_Y - 8}
-              stroke={borderColor}
+              stroke={BORDER}
               strokeWidth={1}
             />
             {/* Left tick */}
@@ -202,7 +195,7 @@ function SystemSketchSvg({ spans, kragarmLinks, kragarmRechts }: SystemSketchPro
               y1={DIM_Y - 12}
               x2={x0px + 4}
               y2={DIM_Y - 4}
-              stroke={borderColor}
+              stroke={BORDER}
               strokeWidth={1}
             />
             {/* Right tick */}
@@ -211,7 +204,7 @@ function SystemSketchSvg({ spans, kragarmLinks, kragarmRechts }: SystemSketchPro
               y1={DIM_Y - 12}
               x2={x1px - 4}
               y2={DIM_Y - 4}
-              stroke={borderColor}
+              stroke={BORDER}
               strokeWidth={1}
             />
 
@@ -221,7 +214,7 @@ function SystemSketchSvg({ spans, kragarmLinks, kragarmRechts }: SystemSketchPro
               y={DIM_Y + 5}
               textAnchor="middle"
               fontSize={10}
-              fill={mutedColor}
+              fill={MUTED}
               fontFamily="system-ui, sans-serif"
             >
               {f.lengthM.toFixed(2)} m
