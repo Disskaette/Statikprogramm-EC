@@ -19,6 +19,105 @@ class FeebbBerechnung:
         #     print("❌ 'max' nicht gefunden!")
         return self.system_memory
 
+    def _berechne_auflagerkraefte(self) -> dict:
+        """
+        Compute support reactions [N] for the Schnell (full-load) calculation mode.
+
+        Uses the shear-jump method. NPTS_STRIDE = 99 because berechne_feebb_gzt_gzg
+        uses num_points=100 with shared-node deduplication (pop(-1) in Postprocessor),
+        so node k maps to array index k * 99.
+
+        GZT: reactions from the single governing ULS shear array.
+        GZG characteristic: sum of all individual characteristic load cases (G + Q_k).
+        """
+        NPTS_STRIDE = 99  # num_points=100 → stride = 100 - 1 = 99
+
+        if not hasattr(self, '_supports') or not self._supports:
+            return {}
+
+        auflager = sorted([k for k, s in enumerate(self._supports) if s[0] == -1])
+        n = len(auflager)
+        if n == 0:
+            return {}
+
+        labels = [chr(65 + i) for i in range(n)]  # A, B, C, …
+
+        # x-positions [m] – reconstruct node positions from snapshot spannweiten
+        spannweiten = self.snapshot.get("spannweiten", {})
+        x = 0.0
+        node_x: dict[int, float] = {}
+        node_tracker = 0
+
+        l_krag_links = float(spannweiten.get("kragarm_links", 0))
+        if l_krag_links > 0:
+            node_x[node_tracker] = x
+            node_tracker += int(round(l_krag_links * 20))
+            x += l_krag_links
+            node_x[node_tracker] = x
+
+        normale = sorted(
+            [(k, float(v)) for k, v in spannweiten.items() if k.startswith("feld_")]
+        )
+        for _, laenge in normale:
+            node_x[node_tracker] = x
+            node_tracker += int(round(laenge * 20))
+            x += laenge
+            node_x[node_tracker] = x
+
+        l_krag_rechts = float(spannweiten.get("kragarm_rechts", 0))
+        if l_krag_rechts > 0:
+            node_x[node_tracker] = x
+            node_tracker += int(round(l_krag_rechts * 20))
+            x += l_krag_rechts
+            node_x[node_tracker] = x
+
+        x_positionen = [round(node_x.get(k, 0.0), 4) for k in auflager]
+
+        def _extract(querkraft: list) -> list[float]:
+            """Shear-jump reaction extraction for NPTS_STRIDE=99."""
+            n_total = len(querkraft)
+            result = []
+            for node in auflager:
+                idx = node * NPTS_STRIDE
+                if node == 0:
+                    R = querkraft[0]
+                elif idx >= n_total - 1:
+                    R = -querkraft[-1]
+                else:
+                    R = querkraft[idx] - querkraft[idx - 1]
+                result.append(abs(float(R)))
+            return result
+
+        # GZT: single governing ULS combination
+        gzt_max = [0.0] * n
+        qk_gzt = (
+            self.system_memory
+            .get("Schnittgroessen", {})
+            .get("GZT", {})
+            .get("querkraft", [])
+        )
+        if qk_gzt:
+            for i, r in enumerate(_extract(qk_gzt)):
+                gzt_max[i] = r
+
+        # GZG characteristic: sum all individual load-case reactions
+        # (characteristic combination = G + Q_1 + Q_2 + … at characteristic values)
+        gzg_sum = [0.0] * n
+        for ergebnis in (
+            self.system_memory.get("Schnittgroessen", {}).get("GZG", [])
+        ):
+            qk = ergebnis.get("querkraft", [])
+            if qk:
+                for i, r in enumerate(_extract(qk)):
+                    gzg_sum[i] += r
+
+        return {
+            "labels": labels,
+            "x_positionen": x_positionen,
+            "gzt_design": gzt_max,              # [N]
+            "gzg_charakteristisch": gzg_sum,   # [N]
+        }
+
     def update_feebb(self):
         """Aktualisiert die feebb-Berechnung und speichert die Ergebnisse."""
         try:
@@ -38,6 +137,9 @@ class FeebbBerechnung:
             self.moment = self.system_memory['Schnittgroessen']['GZT']['moment']
             self.querkraft = self.system_memory['Schnittgroessen']['GZT']['querkraft']
             self.durchbiegung = self.system_memory['Schnittgroessen']['GZT']['durchbiegung']
+
+            # Compute support reactions from the already-solved shear arrays
+            self.system_memory['Auflagerkraefte'] = self._berechne_auflagerkraefte()
 
             # Schnittkräfte übergeben
             return
@@ -149,6 +251,9 @@ class FeebbBerechnung:
         # print("-" * 26)
         # for i, (u, phi) in enumerate(supports):
         #     print(f"{i:>6} | {u:>5} | {phi:>5}")
+
+        # Save supports list so reaction extraction can identify support nodes later
+        self._supports = supports
 
         # === Rückgabe GZT + GZG
         supports_flat = [v for pair in supports for v in pair]
