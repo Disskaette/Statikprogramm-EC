@@ -174,6 +174,7 @@ async def calculate(
         gzg_lastfallkombinationen=result.get("GZG_Lastfallkombinationen"),
         schnittgroessen=result.get("Schnittgroessen"),
         ec5_nachweise=result.get("EC5_Nachweise"),
+        auflagerkraefte=result.get("Auflagerkraefte"),
     )
 
 
@@ -216,4 +217,5 @@ async def calculate_deflection_only(
         gzg_lastfallkombinationen=result.get("GZG_Lastfallkombinationen"),
         schnittgroessen=result.get("Schnittgroessen"),
         ec5_nachweise=result.get("EC5_Nachweise"),
+        auflagerkraefte=result.get("Auflagerkraefte"),
     )

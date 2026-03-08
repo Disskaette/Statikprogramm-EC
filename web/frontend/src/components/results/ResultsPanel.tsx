@@ -28,6 +28,7 @@ import { EC5NachweiseCard } from "./EC5NachweiseCard";
 import { LastkombinationenCard } from "./LastkombinationenCard";
 import { ForceCharts } from "./ForceCharts";
 import { LoadPatternSketch } from "./LoadPatternSketch";
+import { AuflagerTable } from "./AuflagerTable";
 
 // ---------------------------------------------------------------------------
 // Spinner
@@ -228,7 +229,12 @@ export function ResultsPanel() {
             />
           )}
 
-          {/* 4. EC5 design checks */}
+          {/* 4. Support reactions (Auflagerkräfte) */}
+          {results.auflagerkraefte && (
+            <AuflagerTable data={results.auflagerkraefte} />
+          )}
+
+          {/* 5. EC5 design checks */}
           {results.ec5_nachweise && (
             <EC5NachweiseCard ec5Nachweise={results.ec5_nachweise} />
           )}

@@ -139,6 +139,21 @@ export interface CalculationRequest {
 }
 
 // ---------------------------------------------------------------------------
+// Support reactions (Auflagerkräfte)
+// ---------------------------------------------------------------------------
+
+export interface AuflagerKraefte {
+  /** Support labels ["A", "B", "C", ...] from left to right */
+  labels: string[];
+  /** x-positions of supports along the beam [m] */
+  x_positionen: number[];
+  /** Max ULS design reactions per support [N] – convert to kN for display */
+  gzt_design: number[];
+  /** Max SLS characteristic reactions per support [N] – convert to kN for display */
+  gzg_charakteristisch: number[];
+}
+
+// ---------------------------------------------------------------------------
 // API Response (matches CalculationResponse Pydantic schema)
 // ---------------------------------------------------------------------------
 
@@ -151,6 +166,8 @@ export interface CalculationResponse {
   schnittgroessen: Record<string, unknown> | null;
   /** EC5 design check results (bending, shear, deflection) – null when not computed */
   ec5_nachweise: Record<string, unknown> | null;
+  /** Support reactions (Auflagerkräfte) – null when not computed (e.g. deflection-only mode) */
+  auflagerkraefte: AuflagerKraefte | null;
 }
 
 // ---------------------------------------------------------------------------

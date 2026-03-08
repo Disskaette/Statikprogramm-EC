@@ -690,6 +690,100 @@ class FeebbBerechnungEC:
             "supports": supports_flat
         }
 
+    # ===== Support reaction extraction =====
+
+    def _get_auflager_knoten(self) -> list[int]:
+        """Return sorted list of node indices with vertical DOF fixed (s[0] == -1)."""
+        return sorted([k for k, s in enumerate(self.supports) if s[0] == -1])
+
+    def _extrahiere_reaktionen_aus_querkraft(self, querkraft: list) -> list[float]:
+        """
+        Extract support reactions [N] from shear-force array.
+
+        Uses the shear-jump method: R_k = V_after - V_before at each support node.
+        Postprocessor produces 20 pts/element with shared-node deduplication (pop(-1)),
+        so node k maps to array index k * (20-1) = k * 19.
+
+        Sign convention: reactions are returned as positive values (upward forces).
+        """
+        NPTS_STRIDE = 19  # = num_points - 1 = 20 - 1
+        auflager = self._get_auflager_knoten()
+        n_total = len(querkraft)
+        reactions = []
+        for node in auflager:
+            idx = node * NPTS_STRIDE
+            if node == 0:
+                # Left end: no element to the left; R = V_after_support
+                R = querkraft[0]
+            elif idx >= n_total - 1:
+                # Right end: no element to the right; R = -V_before_support
+                R = -querkraft[-1]
+            else:
+                # Intermediate: shear jump across support node
+                R = querkraft[idx] - querkraft[idx - 1]
+            reactions.append(abs(float(R)))  # [N], always positive (upward)
+        return reactions
+
+    def _berechne_auflagerkraefte(self) -> dict:
+        """
+        Compute max support reactions [N] from FEM results.
+
+        GZT: max reaction per support across ALL GZT results (all combos × all patterns).
+        GZG characteristic: max per support from GZG results with
+            kombination["typ"] == "charakteristisch" (plus "nur_g" if no live loads).
+
+        Returns a dict ready for system_memory["Auflagerkraefte"].
+        """
+        auflager = self._get_auflager_knoten()
+        n = len(auflager)
+        if n == 0:
+            return {}
+
+        # Support labels A, B, C, …
+        labels = [chr(65 + i) for i in range(n)]  # A=65 in ASCII
+
+        # x-positions [m] from cumulative field lengths
+        # feld["laenge"] is already in metres (confirmed: l_element = laenge * 1000 / n_elemente)
+        node_x_m: dict[int, float] = {}
+        x = 0.0
+        for feld in self.felder:
+            node_x_m[feld["start_knoten"]] = x
+            x += feld["laenge"]  # [m] – already in metres
+            node_x_m[feld["end_knoten"]] = x
+        x_positionen = [round(node_x_m.get(k, 0.0), 4) for k in auflager]
+
+        # GZT: max reaction per support across ALL ULS results
+        gzt_max = [0.0] * n
+        for ergebnis in self.ergebnisse_gzt:
+            qk = ergebnis.get("querkraft", [])
+            if not qk:
+                continue
+            reactions = self._extrahiere_reaktionen_aus_querkraft(qk)
+            for i, r in enumerate(reactions):
+                if r > gzt_max[i]:
+                    gzt_max[i] = r
+
+        # GZG characteristic: filter by typ == "charakteristisch" (or "nur_g" as fallback)
+        gzg_max = [0.0] * n
+        char_types = {"charakteristisch", "nur_g"}
+        for ergebnis in self.ergebnisse_gzg:
+            if ergebnis.get("kombination", {}).get("typ") not in char_types:
+                continue
+            qk = ergebnis.get("querkraft", [])
+            if not qk:
+                continue
+            reactions = self._extrahiere_reaktionen_aus_querkraft(qk)
+            for i, r in enumerate(reactions):
+                if r > gzg_max[i]:
+                    gzg_max[i] = r
+
+        return {
+            "labels": labels,
+            "x_positionen": x_positionen,      # [m]
+            "gzt_design": gzt_max,              # [N]
+            "gzg_charakteristisch": gzg_max,   # [N]
+        }
+
     def _fuehre_postprocessing(self, beam) -> dict:
         """Run Postprocessor on a Beam that already has .displacement set.
 
@@ -816,6 +910,9 @@ class FeebbBerechnungEC:
         # === LaTeX-Formeln generieren ===
         latex_formeln = self._generiere_latex_formeln()
 
+        # === Auflagerkräfte berechnen ===
+        auflagerkraefte = self._berechne_auflagerkraefte()
+
         # Ergebnisse in system_memory speichern
         self.system_memory = {
             "Schnittgroessen": {
@@ -834,7 +931,8 @@ class FeebbBerechnungEC:
                 "GZT": gzt_detail,
                 "GZG": gzg_detail
             },
-            "LaTeX_Formeln": latex_formeln
+            "LaTeX_Formeln": latex_formeln,
+            "Auflagerkraefte": auflagerkraefte
         }
 
         logger.info(

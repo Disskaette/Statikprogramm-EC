@@ -292,3 +292,10 @@ class CalculationResponse(BaseModel):
         default=None,
         description="EC5 design check results (bending, shear, deflection)"
     )
+    auflagerkraefte: Optional[dict[str, Any]] = Field(
+        default=None,
+        description=(
+            "Support reactions: labels [A,B,C,...], x_positionen [m], "
+            "gzt_design [N], gzg_charakteristisch [N]"
+        )
+    )

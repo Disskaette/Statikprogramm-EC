@@ -124,6 +124,22 @@ function SystemSketchSvg({ spans, kragarmLinks, kragarmRechts }: SystemSketchPro
         />
       ))}
 
+      {/* Support labels A, B, C, … below each triangle */}
+      {supports.map((sx, i) => (
+        <text
+          key={`label-${i}`}
+          x={toX(sx)}
+          y={BEAM_Y + SUPPORT_H + 13}
+          textAnchor="middle"
+          fontSize="11"
+          fontWeight="600"
+          fill="#374151"
+          fontFamily="system-ui, sans-serif"
+        >
+          {String.fromCharCode(65 + i)}
+        </text>
+      ))}
+
       {/* Ground lines below supports */}
       {supports.map((sx) => (
         <line
