@@ -48,9 +48,11 @@ function SystemSketchSvg({ spans, kragarmLinks, kragarmRechts }: SystemSketchPro
   const W = 800;
   const BEAM_Y = 40;      // y-coordinate of the beam line
   const LABEL_Y = 22;     // y for field labels above beam
-  const DIM_Y = 75;       // y for dimension text below beam
   const SUPPORT_H = 14;   // triangle height
-  const SVG_H = 90;
+  // Support labels sit at BEAM_Y + SUPPORT_H + 16 = 70 (baseline).
+  // DIM_Y is placed below that so dimension lines never overlap the labels.
+  const DIM_Y = 88;       // y for dimension text below beam (was 75)
+  const SVG_H = 105;      // increased to fit labels + dimension area (was 90)
 
   const toX = (xM: number) => (xM / total) * W;
 
@@ -124,7 +126,7 @@ function SystemSketchSvg({ spans, kragarmLinks, kragarmRechts }: SystemSketchPro
         />
       ))}
 
-      {/* Support labels A, B, C, … below each triangle */}
+      {/* Support labels A, B, C, … below each triangle – colour tracks Light/Dark mode */}
       {supports.map((sx, i) => (
         <text
           key={`label-${i}`}
@@ -133,7 +135,7 @@ function SystemSketchSvg({ spans, kragarmLinks, kragarmRechts }: SystemSketchPro
           textAnchor="middle"
           fontSize="14"
           fontWeight="700"
-          fill="#374151"
+          fill={fgColor}
           fontFamily="system-ui, sans-serif"
         >
           {String.fromCharCode(65 + i)}
