@@ -30,10 +30,10 @@ export function AuflagerTable({ data }: Props) {
                 Auflager
               </th>
               <th className="text-right py-2 pr-4 font-medium text-gray-600">
-                GZT Bemessung [kN]
+                Design [kN]
               </th>
               <th className="text-right py-2 font-medium text-gray-600">
-                GZG Charakteristisch [kN]
+                Charakteristisch [kN]
               </th>
             </tr>
           </thead>
