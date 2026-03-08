@@ -5,6 +5,7 @@
  * for each support A, B, C, … in kN.
  *
  * Values arrive from the backend in [N] and are converted to [kN] for display.
+ * Colours use CSS variables so the table adapts to Light and Dark mode.
  */
 
 import type { AuflagerKraefte } from "../../types/beam";
@@ -18,21 +19,21 @@ export function AuflagerTable({ data }: Props) {
   const toKN = (n: number) => (n / 1000).toFixed(2);
 
   return (
-    <div className="bg-white rounded-lg border border-gray-200 p-4">
-      <h3 className="text-sm font-semibold text-gray-700 mb-3">
+    <div className="rounded-lg border border-[var(--border)] p-4">
+      <h3 className="text-sm font-semibold text-[var(--foreground)] mb-3">
         Auflagerkräfte
       </h3>
       <div className="overflow-x-auto">
         <table className="w-full text-sm">
           <thead>
-            <tr className="border-b border-gray-200">
-              <th className="text-left py-2 pr-4 font-medium text-gray-600">
+            <tr className="border-b border-[var(--border)]">
+              <th className="text-left py-2 pr-4 font-medium text-[var(--muted-foreground)]">
                 Auflager
               </th>
-              <th className="text-right py-2 pr-4 font-medium text-gray-600">
+              <th className="text-right py-2 pr-4 font-medium text-[var(--muted-foreground)]">
                 Charakteristisch [kN]
               </th>
-              <th className="text-right py-2 font-medium text-gray-600">
+              <th className="text-right py-2 font-medium text-[var(--muted-foreground)]">
                 Design [kN]
               </th>
             </tr>
@@ -41,15 +42,15 @@ export function AuflagerTable({ data }: Props) {
             {data.labels.map((label, i) => (
               <tr
                 key={label}
-                className="border-b border-gray-100 last:border-0"
+                className="border-b border-[var(--border)] last:border-0"
               >
-                <td className="py-2 pr-4 font-mono font-bold text-gray-800">
+                <td className="py-2 pr-4 font-mono font-bold text-[var(--foreground)]">
                   {label}
                 </td>
-                <td className="py-2 pr-4 text-right text-gray-700">
+                <td className="py-2 pr-4 text-right text-[var(--foreground)]">
                   {toKN(data.gzg_charakteristisch[i])}
                 </td>
-                <td className="py-2 text-right text-gray-700">
+                <td className="py-2 text-right text-[var(--foreground)]">
                   {toKN(data.gzt_design[i])}
                 </td>
               </tr>
