@@ -105,7 +105,8 @@ class OrchestratorService:
                         'Lastfallkombinationen': kombi_result['Lastfallkombinationen'],
                         'GZG_Lastfallkombinationen': gzg_result['GZG_Lastfallkombinationen'],
                         'Schnittgroessen': feebb_result['Schnittgroessen'],
-                        'EC5_Nachweise': ec5_result
+                        'EC5_Nachweise': ec5_result,
+                        'Auflagerkraefte': feebb_result.get('Auflagerkraefte'),
                     }
                 # Debug-Ausgabe vor Callback
                 # print(
